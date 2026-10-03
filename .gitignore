@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Prisma — migrations MUST be committed so Render can run 'prisma migrate deploy'
+# prisma/migrations/   <-- do NOT ignore this
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Build
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+
+# Uploads
+uploads/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+!.env.example
+
+# Local code-dump helper and its output (never commit or ship these)
+/collect-code.js
+*_code.txt

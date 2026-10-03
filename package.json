@@ -1,0 +1,17 @@
+{
+  "name": "echosign",
+  "version": "2.0.0",
+  "private": true,
+  "description": "EchoSign: Sign Language & Speech-to-Text Classroom Assistant. Converts speech and supported sign-language gestures into real-time text captions for deaf and hard-of-hearing students.",
+  "engines": { "node": ">=18.0.0" },
+  "scripts": {
+    "install:all": "npm --prefix frontend ci && npm --prefix backend ci",
+    "build": "npm --prefix frontend run build && npm --prefix backend run prisma:generate",
+    "migrate": "npm --prefix backend run prisma:migrate",
+    "start": "npm --prefix backend start",
+    "live": "npm --prefix backend run live",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "test": "npm --prefix frontend test && npm --prefix backend test -- --coverage=false"
+  }
+}
