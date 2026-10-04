@@ -1,0 +1,28 @@
+// Prisma schema for the Next.js site (INT257: Database Integration, ORM basics).
+// This is its own database (a separate Neon project), not the main EchoSign database.
+// The owner of a note is the EchoSign user id from the backend login; there is no users table here.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled address, used by the running app
+  directUrl = env("DIRECT_URL")   // direct address, used by migrations
+}
+
+model StudyNote {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String   @db.VarChar(120)
+  body      String   @default("") @db.Text
+  classCode String?  @db.VarChar(6)
+  tags      String[] @default([])
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, updatedAt])
+  @@map("study_notes")
+}

@@ -1,0 +1,29 @@
+{
+  "name": "echosign-nextjs",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EchoSign companion site built with Next.js (INT257): App Router, Server Components, Server Actions, Route Handlers, Prisma.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.1.1",
+    "lucide-react": "^1.81.0",
+    "next": "^16.4.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "server-only": "^0.0.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "prisma": "^6.19.3"
+  }
+}
