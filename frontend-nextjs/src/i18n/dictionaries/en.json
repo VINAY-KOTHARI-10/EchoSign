@@ -1,0 +1,203 @@
+{
+  "meta": {
+    "siteName": "EchoSign Next",
+    "description": "A companion to EchoSign: a sign-language dictionary, your lecture notes, and study notes, built with Next.js."
+  },
+  "nav": {
+    "home": "Home",
+    "signs": "Sign dictionary",
+    "languages": "Languages",
+    "rendering": "Rendering lab",
+    "dashboard": "Dashboard",
+    "library": "My lectures",
+    "notes": "Study notes",
+    "admin": "Admin",
+    "login": "Sign in",
+    "register": "Create account",
+    "logout": "Sign out",
+    "menu": "Main menu",
+    "language": "Language"
+  },
+  "common": {
+    "loading": "Loading…",
+    "retry": "Try again",
+    "back": "Back",
+    "previous": "Previous",
+    "next": "Next",
+    "page": "Page",
+    "of": "of",
+    "backendDown": "The EchoSign server could not be reached just now. Please try again in a moment.",
+    "somethingWrong": "Something went wrong",
+    "somethingWrongBody": "This page could not be shown. You can try again.",
+    "notFound": "Page not found",
+    "notFoundBody": "We could not find what you were looking for.",
+    "goHome": "Go to the home page",
+    "forbidden": "You do not have access",
+    "forbiddenBody": "This page is only for accounts with a different role.",
+    "signInNeeded": "Please sign in",
+    "signInNeededBody": "You need to sign in to see this page."
+  },
+  "home": {
+    "badge": "Companion to EchoSign",
+    "title": "Learn, review and organise,",
+    "titleAccent": "built with Next.js.",
+    "lead": "Browse the sign-language alphabet, read the notes from your lectures, and keep your own study notes. It uses the same account as EchoSign.",
+    "cta": "Open the dashboard",
+    "ctaSecondary": "Explore the sign dictionary",
+    "f1t": "Sign dictionary",
+    "f1b": "All 26 fingerspelling letters, each with its own page, prepared at build time so it loads instantly.",
+    "f2t": "Lecture library",
+    "f2b": "Your joined classes with notes, key terms and quizzes, rendered on the server for your account.",
+    "f3t": "Study notes",
+    "f3b": "Create, edit, pin and search your own notes. Saved in a database and updated instantly on screen.",
+    "built": "Built at",
+    "points": [
+      "Sign dictionary",
+      "Lecture notes",
+      "Study notes",
+      "3 languages"
+    ],
+    "featuresTitle": "What you can do here",
+    "eyebrow": "Features",
+    "stepsEyebrow": "How it works",
+    "stepsTitle": "Three steps from sign-in to study",
+    "steps": [
+      [
+        "Sign in",
+        "Use your EchoSign account, or create one in a minute."
+      ],
+      [
+        "Open your lectures",
+        "Read the notes, key terms and quizzes from the classes you joined."
+      ],
+      [
+        "Keep your own notes",
+        "Write, pin and search study notes saved to your account."
+      ]
+    ],
+    "ctaBody": "Create a free account or sign in with the one you already use on EchoSign.",
+    "sample": "Illustration with sample text, not real classroom data.",
+    "ctaTitle": "Ready to start?"
+  },
+  "signs": {
+    "title": "Sign dictionary",
+    "subtitle": "ASL fingerspelling A to Z. Pick a letter to see how to make it.",
+    "reliable": "Reliable",
+    "shaky": "Often confused",
+    "motion": "Needs motion",
+    "back": "All letters",
+    "howTo": "How to make it",
+    "note": "Recognition in EchoSign is rule-based and can be wrong. Letters shown as often confused look alike."
+  },
+  "languages": {
+    "title": "Languages in EchoSign",
+    "subtitle": "The caption languages the platform supports right now, from the EchoSign server.",
+    "refreshed": "This list refreshes about once an hour.",
+    "fallback": "Showing the built-in list because the server could not be reached."
+  },
+  "rendering": {
+    "title": "Rendering lab",
+    "subtitle": "The same time stamp, produced four different ways. Reload each page and watch what changes.",
+    "ssg": "Static (SSG)",
+    "ssgBody": "Built once when the site is built. The time never changes until the next build.",
+    "isr": "Incremental (ISR)",
+    "isrBody": "Built once, then rebuilt in the background at most once a minute.",
+    "ssr": "Server-side (SSR)",
+    "ssrBody": "Built on the server for every single request. The time is always now.",
+    "csr": "Client-side (CSR)",
+    "csrBody": "The page loads empty, then the browser asks an API for the time.",
+    "time": "Time shown",
+    "open": "Open this example",
+    "choose": "How to choose",
+    "chooseBody": "Use static for pages that rarely change, incremental for content that changes every so often, server-side for personal or always-fresh pages, and client-side for small interactive parts."
+  },
+  "auth": {
+    "loginTitle": "Welcome back",
+    "loginSub": "Sign in with your EchoSign account.",
+    "registerTitle": "Create your account",
+    "registerSub": "One account works on EchoSign and here.",
+    "email": "Email",
+    "username": "Username",
+    "password": "Password",
+    "signIn": "Sign in",
+    "createAccount": "Create account",
+    "working": "Please wait…",
+    "codeTitle": "Check your email",
+    "codeSub": "We sent a 6-digit code to",
+    "code": "6-digit code",
+    "verify": "Verify and continue",
+    "noAccount": "New here?",
+    "haveAccount": "Already have an account?"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome back",
+    "role": "Your role",
+    "stats": "At a glance",
+    "notesCount": "Study notes",
+    "lecturesCount": "Lectures joined",
+    "recent": "Recent activity",
+    "recentNotes": "Latest notes",
+    "recentLectures": "Latest lectures",
+    "none": "Nothing here yet."
+  },
+  "library": {
+    "title": "My lectures",
+    "subtitle": "Classes you joined, with their notes and quizzes.",
+    "empty": "No lectures yet. Join a class with its code in EchoSign and it will appear here.",
+    "teacher": "Teacher",
+    "captions": "captions",
+    "attended": "you attended",
+    "minutes": "min",
+    "live": "Live",
+    "ended": "Ended",
+    "notes": "Open notes",
+    "noNotes": "No notes yet"
+  },
+  "lecture": {
+    "notes": "Notes",
+    "keyTerms": "Key terms",
+    "quiz": "Check your understanding",
+    "answer": "Answer",
+    "none": "Your teacher has not generated notes for this lecture yet.",
+    "back": "My lectures",
+    "close": "Close"
+  },
+  "notes": {
+    "title": "Study notes",
+    "subtitle": "Your own notes, saved to your account.",
+    "newNote": "New note",
+    "noteTitle": "Title",
+    "body": "Note",
+    "classCode": "Class code (optional)",
+    "tags": "Tags (separated by commas)",
+    "pinned": "Pin to the top",
+    "save": "Save note",
+    "saving": "Saving…",
+    "update": "Save changes",
+    "delete": "Delete",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "edit": "Edit",
+    "empty": "No notes yet. Write your first one above.",
+    "search": "Search notes",
+    "allTags": "All tags",
+    "updated": "Updated",
+    "saved": "Saved.",
+    "deleted": "Note deleted.",
+    "confirmDelete": "Delete this note?",
+    "owner": "Owner"
+  },
+  "admin": {
+    "title": "Administration",
+    "subtitle": "Only accounts with the Admin role can see this page.",
+    "users": "Users",
+    "classes": "Classes",
+    "sessions": "Practice sessions",
+    "captions": "Captions",
+    "recentUsers": "Newest accounts",
+    "role": "Role",
+    "joined": "Joined",
+    "allNotes": "All study notes (admin view)"
+  }
+}

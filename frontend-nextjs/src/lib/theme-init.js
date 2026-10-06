@@ -1,0 +1,2 @@
+// Runs before the page is painted (inlined in <head> by the layout): applies the saved or system light/dark theme.
+export const themeInitScript = `try{var t=localStorage.getItem('lw_theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t}catch(e){document.documentElement.setAttribute('data-theme','light')}`;

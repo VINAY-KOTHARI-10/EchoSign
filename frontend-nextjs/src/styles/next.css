@@ -1,0 +1,30 @@
+/* Next.js specifics on top of the shared EchoSign stylesheets (copied from the React app, so both sites look the same).
+   The fonts come from next/font (served from this site) and are mapped onto the same CSS variables the stylesheets use. */
+:root {
+  --font-display: var(--font-manrope), 'Manrope', 'Inter', system-ui, sans-serif;
+  --font-body: var(--font-inter), 'Inter', system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* A locale switcher that sits in the navbar and the sidebar. */
+.locale-switch { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.locale-switch .pill { text-decoration: none; padding: 6px 12px; font-size: 13px; }
+
+/* Small helpers used by the Next.js pages. */
+.stack-lg { display: grid; gap: 28px; }
+.page-narrow { max-width: 760px; }
+.tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.tag { padding: 2px 10px; border-radius: 999px; background: var(--violet-light); color: var(--violet-dark); font-size: 12px; font-weight: 700; }
+.note-card.pinned { border-color: var(--violet); }
+.note-card.pending { opacity: 0.6; }
+.time-card { max-width: 640px; }
+.time-big { font-family: var(--font-mono); font-size: 28px; font-weight: 600; color: var(--violet); margin: 4px 0 0; }
+.modal-scrim { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 40px 16px; background: rgba(21, 21, 58, 0.55); }
+.modal-panel { position: relative; width: 100%; max-width: 760px; background: var(--surface); border-radius: 24px; padding: 32px; box-shadow: var(--shadow-lg); outline: none; }
+.modal-close { position: absolute; top: 14px; right: 14px; }
+.letter-big { display: grid; place-items: center; aspect-ratio: 1; border-radius: 28px; background: var(--violet-light); color: var(--violet); font-family: var(--font-display); font-size: 120px; font-weight: 800; }
+.letter-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 640px) { .letter-layout { grid-template-columns: minmax(0, 1fr); } .letter-big { font-size: 80px; max-width: 200px; } }
+.language-grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.language-grid li { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
+.locale-select { width: auto; min-width: 0; height: 40px; padding: 0 28px 0 12px; font-size: 14px; font-weight: 600; }

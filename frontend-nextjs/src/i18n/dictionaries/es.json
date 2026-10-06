@@ -1,0 +1,203 @@
+{
+  "meta": {
+    "siteName": "EchoSign Next",
+    "description": "Un complemento de EchoSign: diccionario de lengua de señas, tus notas de clase y notas de estudio, hecho con Next.js."
+  },
+  "nav": {
+    "home": "Inicio",
+    "signs": "Diccionario de señas",
+    "languages": "Idiomas",
+    "rendering": "Laboratorio de renderizado",
+    "dashboard": "Panel",
+    "library": "Mis clases",
+    "notes": "Notas de estudio",
+    "admin": "Administración",
+    "login": "Iniciar sesión",
+    "register": "Crear cuenta",
+    "logout": "Cerrar sesión",
+    "menu": "Menú principal",
+    "language": "Idioma"
+  },
+  "common": {
+    "loading": "Cargando…",
+    "retry": "Intentar de nuevo",
+    "back": "Volver",
+    "previous": "Anterior",
+    "next": "Siguiente",
+    "page": "Página",
+    "of": "de",
+    "backendDown": "No se pudo conectar con el servidor de EchoSign. Inténtalo de nuevo en un momento.",
+    "somethingWrong": "Algo salió mal",
+    "somethingWrongBody": "No se pudo mostrar esta página. Puedes intentarlo de nuevo.",
+    "notFound": "Página no encontrada",
+    "notFoundBody": "No encontramos lo que buscabas.",
+    "goHome": "Ir al inicio",
+    "forbidden": "No tienes acceso",
+    "forbiddenBody": "Esta página es solo para cuentas con otro rol.",
+    "signInNeeded": "Inicia sesión",
+    "signInNeededBody": "Necesitas iniciar sesión para ver esta página."
+  },
+  "home": {
+    "badge": "Complemento de EchoSign",
+    "title": "Aprende, repasa y organiza,",
+    "titleAccent": "hecho con Next.js.",
+    "lead": "Explora el alfabeto de la lengua de señas, lee las notas de tus clases y guarda tus propias notas de estudio. Usa la misma cuenta que EchoSign.",
+    "cta": "Abrir el panel",
+    "ctaSecondary": "Explorar el diccionario de señas",
+    "f1t": "Diccionario de señas",
+    "f1b": "Las 26 letras del deletreo manual, cada una con su página, preparadas al compilar para cargar al instante.",
+    "f2t": "Biblioteca de clases",
+    "f2b": "Tus clases con notas, términos clave y cuestionarios, generadas en el servidor para tu cuenta.",
+    "f3t": "Notas de estudio",
+    "f3b": "Crea, edita, fija y busca tus notas. Se guardan en una base de datos y se actualizan al instante en pantalla.",
+    "built": "Compilado el",
+    "points": [
+      "Diccionario de señas",
+      "Notas de clase",
+      "Notas de estudio",
+      "3 idiomas"
+    ],
+    "featuresTitle": "Lo que puedes hacer aquí",
+    "eyebrow": "Funciones",
+    "stepsEyebrow": "Cómo funciona",
+    "stepsTitle": "Tres pasos del inicio de sesión al estudio",
+    "steps": [
+      [
+        "Inicia sesión",
+        "Usa tu cuenta de EchoSign o crea una en un minuto."
+      ],
+      [
+        "Abre tus clases",
+        "Lee las notas, los términos clave y los cuestionarios de las clases a las que te uniste."
+      ],
+      [
+        "Guarda tus notas",
+        "Escribe, fija y busca notas de estudio guardadas en tu cuenta."
+      ]
+    ],
+    "ctaBody": "Crea una cuenta gratuita o inicia sesión con la que ya usas en EchoSign.",
+    "sample": "Ilustración con texto de ejemplo, no son datos reales de una clase.",
+    "ctaTitle": "¿Listo para empezar?"
+  },
+  "signs": {
+    "title": "Diccionario de señas",
+    "subtitle": "Deletreo manual ASL de la A a la Z. Elige una letra para ver cómo se hace.",
+    "reliable": "Fiable",
+    "shaky": "Se confunde a menudo",
+    "motion": "Requiere movimiento",
+    "back": "Todas las letras",
+    "howTo": "Cómo se hace",
+    "note": "El reconocimiento de EchoSign se basa en reglas y puede equivocarse. Las letras que se confunden a menudo se parecen entre sí."
+  },
+  "languages": {
+    "title": "Idiomas de EchoSign",
+    "subtitle": "Los idiomas de subtítulos que la plataforma admite ahora, desde el servidor de EchoSign.",
+    "refreshed": "Esta lista se actualiza más o menos cada hora.",
+    "fallback": "Se muestra la lista integrada porque no se pudo conectar con el servidor."
+  },
+  "rendering": {
+    "title": "Laboratorio de renderizado",
+    "subtitle": "La misma hora, producida de cuatro maneras. Recarga cada página y observa qué cambia.",
+    "ssg": "Estático (SSG)",
+    "ssgBody": "Se genera una vez al compilar el sitio. La hora no cambia hasta la próxima compilación.",
+    "isr": "Incremental (ISR)",
+    "isrBody": "Se genera una vez y se regenera en segundo plano como máximo una vez por minuto.",
+    "ssr": "En el servidor (SSR)",
+    "ssrBody": "Se genera en el servidor en cada solicitud. La hora siempre es la actual.",
+    "csr": "En el cliente (CSR)",
+    "csrBody": "La página carga vacía y luego el navegador pide la hora a una API.",
+    "time": "Hora mostrada",
+    "open": "Abrir este ejemplo",
+    "choose": "Cómo elegir",
+    "chooseBody": "Usa estático para páginas que casi no cambian, incremental para contenido que cambia de vez en cuando, en el servidor para páginas personales o siempre actuales, y en el cliente para pequeñas partes interactivas."
+  },
+  "auth": {
+    "loginTitle": "Bienvenido de nuevo",
+    "loginSub": "Inicia sesión con tu cuenta de EchoSign.",
+    "registerTitle": "Crea tu cuenta",
+    "registerSub": "Una sola cuenta sirve en EchoSign y aquí.",
+    "email": "Correo electrónico",
+    "username": "Nombre de usuario",
+    "password": "Contraseña",
+    "signIn": "Iniciar sesión",
+    "createAccount": "Crear cuenta",
+    "working": "Espera un momento…",
+    "codeTitle": "Revisa tu correo",
+    "codeSub": "Enviamos un código de 6 dígitos a",
+    "code": "Código de 6 dígitos",
+    "verify": "Verificar y continuar",
+    "noAccount": "¿Eres nuevo?",
+    "haveAccount": "¿Ya tienes una cuenta?"
+  },
+  "dashboard": {
+    "title": "Panel",
+    "welcome": "Bienvenido de nuevo",
+    "role": "Tu rol",
+    "stats": "De un vistazo",
+    "notesCount": "Notas de estudio",
+    "lecturesCount": "Clases a las que te uniste",
+    "recent": "Actividad reciente",
+    "recentNotes": "Últimas notas",
+    "recentLectures": "Últimas clases",
+    "none": "Todavía no hay nada aquí."
+  },
+  "library": {
+    "title": "Mis clases",
+    "subtitle": "Las clases a las que te uniste, con sus notas y cuestionarios.",
+    "empty": "Aún no hay clases. Únete a una clase con su código en EchoSign y aparecerá aquí.",
+    "teacher": "Docente",
+    "captions": "subtítulos",
+    "attended": "asististe",
+    "minutes": "min",
+    "live": "En vivo",
+    "ended": "Terminada",
+    "notes": "Abrir notas",
+    "noNotes": "Aún sin notas"
+  },
+  "lecture": {
+    "notes": "Notas",
+    "keyTerms": "Términos clave",
+    "quiz": "Comprueba lo que aprendiste",
+    "answer": "Respuesta",
+    "none": "Tu docente todavía no ha generado notas para esta clase.",
+    "back": "Mis clases",
+    "close": "Cerrar"
+  },
+  "notes": {
+    "title": "Notas de estudio",
+    "subtitle": "Tus propias notas, guardadas en tu cuenta.",
+    "newNote": "Nueva nota",
+    "noteTitle": "Título",
+    "body": "Nota",
+    "classCode": "Código de clase (opcional)",
+    "tags": "Etiquetas (separadas por comas)",
+    "pinned": "Fijar arriba",
+    "save": "Guardar nota",
+    "saving": "Guardando…",
+    "update": "Guardar cambios",
+    "delete": "Eliminar",
+    "pin": "Fijar",
+    "unpin": "Quitar fijado",
+    "edit": "Editar",
+    "empty": "Aún no hay notas. Escribe la primera arriba.",
+    "search": "Buscar notas",
+    "allTags": "Todas las etiquetas",
+    "updated": "Actualizada",
+    "saved": "Guardado.",
+    "deleted": "Nota eliminada.",
+    "confirmDelete": "¿Eliminar esta nota?",
+    "owner": "Propietario"
+  },
+  "admin": {
+    "title": "Administración",
+    "subtitle": "Solo las cuentas con el rol de administrador pueden ver esta página.",
+    "users": "Usuarios",
+    "classes": "Clases",
+    "sessions": "Sesiones de práctica",
+    "captions": "Subtítulos",
+    "recentUsers": "Cuentas más recientes",
+    "role": "Rol",
+    "joined": "Se unió",
+    "allNotes": "Todas las notas de estudio (vista de administrador)"
+  }
+}
