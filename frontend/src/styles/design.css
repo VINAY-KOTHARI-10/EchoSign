@@ -1,0 +1,176 @@
+/* Design system v2: app shell, page header, tabs, dialog, empty/loading states, tables.
+   Loaded after global.css, so it refines the base components rather than duplicating them. */
+
+/* ── Motion: respect the OS setting, or the in-app override from Profile ─────────────── */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}
+:root[data-motion='reduce'] { scroll-behavior: auto; }
+:root[data-motion='reduce'] *, :root[data-motion='reduce'] *::before, :root[data-motion='reduce'] *::after {
+  animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important;
+}
+
+/* ── App shell ───────────────────────────────────────────── */
+.shell { grid-template-columns: 264px minmax(0, 1fr); background: var(--bg); }
+.sidebar { background: var(--surface); border-right: 1px solid var(--line); padding: 20px 14px; gap: 4px; }
+.sidebar .logo { padding: 4px 10px 18px; }
+.nav-section { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 14px 12px 6px; }
+.nav-item { min-height: 44px; padding: 10px 12px; border-radius: 12px; color: #3d3d63; font-weight: 600; font-size: 15px; position: relative; }
+.nav-item svg { flex-shrink: 0; }
+.nav-item:hover { background: var(--violet-light); color: var(--violet-dark); }
+.nav-item.active { background: var(--violet-light); color: var(--violet-dark); font-weight: 800; }
+.nav-item.active::before { content: ''; position: absolute; left: -14px; top: 10px; bottom: 10px; width: 4px; border-radius: 0 4px 4px 0; background: var(--violet); }
+.shell.admin .nav-item.active { background: var(--ink); color: #fff; }
+.shell.admin .nav-item.active::before { background: var(--ink); }
+.user-pill .avatar { width: 40px; height: 40px; }
+.sidebar-foot { border-top: 1px solid var(--line); }
+.main { padding: 28px 36px 72px; max-width: 1280px; width: 100%; margin: 0 auto; }
+.mobile-bar { padding: 10px 16px; }
+
+/* ── Page header ─────────────────────────────────────────── */
+.page-head { align-items: flex-start; margin-bottom: 24px; }
+.page-head h1 { font-size: 30px; font-weight: 800; line-height: 1.15; }
+.page-head .subtitle { color: var(--muted); font-size: 15px; margin-top: 6px; max-width: 60ch; }
+.page-head .head-icon { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; background: var(--violet-light); color: var(--violet); flex-shrink: 0; }
+.page-head .head-main { display: flex; gap: 14px; align-items: flex-start; }
+
+/* ── Tabs (WAI-ARIA tablist, arrow-key navigation) ───────── */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 20px; overflow-x: auto; scrollbar-width: thin; }
+.tab { position: relative; min-height: 44px; padding: 10px 16px; border: 0; background: transparent; font-weight: 700; font-size: 14px; color: var(--muted); border-radius: 10px 10px 0 0; white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; }
+.tab:hover { color: var(--violet-dark); background: var(--violet-light); }
+.tab[aria-selected='true'] { color: var(--violet-dark); }
+.tab[aria-selected='true']::after { content: ''; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 3px; border-radius: 3px 3px 0 0; background: var(--violet); }
+.tab .count { background: var(--violet-light); color: var(--violet-dark); border-radius: 999px; font-size: 11px; padding: 1px 8px; }
+
+/* ── Status badge: always icon + text, never colour alone ─── */
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; line-height: 1.5; border: 1px solid transparent; white-space: nowrap; }
+.badge svg { flex-shrink: 0; }
+.badge-live { background: #fdeceb; color: var(--stop); border-color: #f5c6c2; }
+.badge-ok { background: var(--mint); color: var(--go); border-color: #b8e6cc; }
+.badge-warn { background: #fef3c7; color: #8a4a05; border-color: #f3dc93; }
+.badge-error { background: #fdeceb; color: var(--stop); border-color: #f5c6c2; }
+.badge-info { background: var(--violet-light); color: var(--violet-dark); border-color: #d9d0fb; }
+.badge-off { background: #f0eff8; color: var(--muted); border-color: var(--line); }
+.pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: dotpulse 1.4s ease-in-out infinite; }
+@keyframes dotpulse { 50% { opacity: 0.35; transform: scale(0.8); } }
+
+/* ── Empty / loading / error states ──────────────────────── */
+.state { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 44px 20px; color: var(--muted); }
+.state .state-icon { width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; background: var(--violet-light); color: var(--violet); }
+.state h2 { font-size: 17px; color: var(--ink); }
+.state p { max-width: 44ch; font-size: 14px; }
+.skeleton { background: linear-gradient(90deg, #efeaff 25%, #f8f5ff 50%, #efeaff 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; border-radius: 10px; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+/* ── Tables ──────────────────────────────────────────────── */
+.table-wrap { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.card > .table-wrap { margin: 0; }
+.table th { background: var(--surface-2); font-size: 12px; font-weight: 800; color: var(--muted); padding: 12px 14px; position: sticky; top: 0; }
+.table td { padding: 14px; vertical-align: middle; }
+.table tbody tr:hover { background: var(--surface-2); }
+.table caption { text-align: left; padding: 0 0 8px; }
+
+/* ── Toolbar: search + filters ───────────────────────────── */
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
+.search { position: relative; flex: 1; min-width: 220px; max-width: 420px; }
+.search svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.search .input { padding-left: 40px; }
+
+/* ── Dialog (native <dialog>: focus trap + Esc come from the browser) ── */
+dialog.dialog { border: 0; border-radius: 20px; padding: 0; width: min(440px, calc(100vw - 32px)); box-shadow: 0 30px 80px rgba(21, 21, 58, 0.35); color: var(--ink); }
+dialog.dialog::backdrop { background: rgba(21, 21, 58, 0.5); backdrop-filter: blur(2px); }
+.dialog-body { padding: 24px 24px 8px; }
+.dialog-body h2 { font-size: 20px; margin-bottom: 8px; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px 24px; }
+
+/* ── Stat tiles ──────────────────────────────────────────── */
+.stat .num { font-size: 32px; line-height: 1.1; }
+.stat-icon { border-radius: 12px; }
+.stat .delta { font-size: 12px; font-weight: 700; color: var(--muted); }
+
+/* ── Key-value definition rows ───────────────────────────── */
+.kv { display: grid; grid-template-columns: 140px 1fr; gap: 10px 16px; font-size: 14px; }
+.kv dt { color: var(--muted); font-weight: 600; }
+.kv dd { margin: 0; font-weight: 600; word-break: break-word; }
+
+@media (max-width: 960px) {
+  .nav-item.active::before { left: -14px; }
+  .sidebar { z-index: 60; }
+}
+@media (max-width: 640px) {
+  .main { padding: 18px 14px 56px; }
+  .page-head h1 { font-size: 24px; }
+  .kv { grid-template-columns: 1fr; gap: 2px 0; }
+  .kv dd { margin-bottom: 8px; }
+}
+
+.drawer-scrim { position: fixed; inset: 0; z-index: 50; border: 0; background: rgba(21, 21, 58, 0.45); }
+.sidebar.open { box-shadow: none !important; }
+main:focus{outline:none}
+
+/* Mobile / tablet: the shell is one column and the sidebar becomes a drawer. Must come after the
+   desktop `.shell` rule above, or the desktop grid would win. */
+@media (max-width: 960px) {
+  .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
+  .sidebar { position: fixed; inset: 0 auto 0 0; width: 280px; height: 100dvh; overflow-y: auto; transform: translateX(-100%); transition: transform 0.25s; z-index: 60; box-shadow: none; }
+  .sidebar.open { transform: none; box-shadow: 8px 0 40px rgba(21, 21, 58, 0.25); }
+  .mobile-bar { display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 40; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .nav-item.active::before { display: none; }
+  .main { padding: 20px 16px 56px; }
+}
+
+/* A closed mobile drawer must not be reachable by keyboard or screen reader. */
+@media (max-width: 960px) {
+  .sidebar:not(.open) { visibility: hidden; transition: transform 0.25s, visibility 0s linear 0.25s; }
+  .sidebar.open { visibility: visible; transition: transform 0.25s, visibility 0s; }
+}
+
+/* ── Spacing pass ────────────────────────────────────────── */
+.card { padding: var(--card-pad); }
+.grid { gap: var(--gap); }
+.page-head { margin-bottom: 28px; }
+.tabs { margin-bottom: var(--section-gap); }
+.live-main, .live-side { gap: var(--gap); }
+.control-bar { padding: 16px 20px; }
+.btn-icon { min-height: 44px; min-width: 44px; }
+.composer .btn-icon, .composer .btn { align-self: stretch; }
+.card-title { margin-bottom: 16px; }
+.logo svg { flex-shrink: 0; }
+.admin-badge { margin-left: auto; flex-shrink: 0; white-space: nowrap; }
+.hint { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+p.hint { margin-top: 2px; }
+/* a fieldset used as a form row keeps its bottom margin (the reset above removes it) */
+.fieldset.field { margin-bottom: 16px; }
+.page-head .select { width: auto; min-width: 150px; }
+.page-head .field { align-self: center; }
+.page-head > .row { align-self: center; }
+
+/* Stat tiles: fill rows evenly instead of leaving a short last row. */
+.grid-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--gap); }
+.grid > .wide { grid-column: 1 / -1; }
+
+/* Podium: 2nd — 1st — 3rd, like a real podium. */
+.podium.rank-1 { order: 2; }
+.podium.rank-2 { order: 1; }
+.podium.rank-3 { order: 3; }
+@media (max-width: 720px) { .podium.rank-1 { order: 1; } .podium.rank-2 { order: 2; } }
+
+.brand-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; }
+.brand-row .admin-badge { margin: 0 0 14px 10px; }
+.brand-row .logo { padding-bottom: 18px; }
+.brand-row .admin-badge + .logo { padding-bottom: 18px; }
+
+/* Phones: tighter card padding and gaps so content gets the width. */
+@media (max-width: 640px) {
+  :root { --gap: 16px; --card-pad: 18px; --section-gap: 20px; }
+  .role-card { padding: 20px; }
+  .page-head { margin-bottom: 20px; gap: 12px; }
+  .page-head .head-main { gap: 12px; }
+  .page-head .head-icon { width: 40px; height: 40px; }
+  .control-bar { padding: 14px; }
+  .stage-card { padding: 10px; }
+  .podium { padding: 18px 14px; }
+}
+
+.kv dd:last-of-type { margin-bottom: 0; }
