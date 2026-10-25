@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+// Auth - login and registration screen
 import { Link, useLocation } from 'react-router-dom';
 import { ArrowRight, Eye, EyeOff, Info, Lock, Mail, User } from 'lucide-react';
 import * as api from '../api';
@@ -167,3 +167,4 @@ export default function Auth({ mode }) {
     </AuthLayout>
   );
 }
+
