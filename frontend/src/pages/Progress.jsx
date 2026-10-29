@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+// Progress - skill bars and performance charts
 import { Bar, Line } from 'react-chartjs-2';
 import {
   BarElement, CategoryScale, Chart as ChartJS, Filler, Legend, LinearScale, LineElement, PointElement, Tooltip,
@@ -164,3 +164,4 @@ export default function Progress() {
     </>
   );
 }
+

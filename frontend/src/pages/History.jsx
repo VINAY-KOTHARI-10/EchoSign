@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+// History - session history and replay
 import { Eye, History as HistoryIcon, Search, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import * as api from '../api';
@@ -153,3 +153,4 @@ export default function History() {
     </>
   );
 }
+
