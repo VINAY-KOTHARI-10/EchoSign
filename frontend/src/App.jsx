@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+// EchoSign - App entry point
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { RequireAuth, RequireAdmin, GuestOnly } from './components/Guards';
@@ -72,3 +72,4 @@ export default function App() {
     </Suspense>
   );
 }
+
