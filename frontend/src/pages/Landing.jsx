@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+// Landing - hero section with floating cards and waveform
 import { ArrowRight, Captions, CheckCircle2, Globe, Hand, Keyboard, Languages, Mic, MonitorSmartphone, Sparkles, Users } from 'lucide-react';
 import Logo from '../components/Logo';
 import ThemeToggle from '../components/ThemeToggle';
@@ -168,3 +168,4 @@ export default function Landing() {
     </>
   );
 }
+
