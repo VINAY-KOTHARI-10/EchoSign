@@ -1,0 +1,12 @@
+**/node_modules
+**/.env
+**/.env.*
+!**/.env.example
+**/logs
+**/coverage
+.git
+frontend/dist
+docs
+*.md
+collect-code.js
+*_code.txt

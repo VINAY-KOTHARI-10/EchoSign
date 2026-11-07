@@ -1,0 +1,13 @@
+# Runs the whole app in one container. Databases are hosted (Neon Postgres + MongoDB Atlas),
+# so none are started here. Put your secrets in backend/.env (copy backend/.env.example).
+#   docker compose up --build        ->  http://localhost:5000
+services:
+  echosign:
+    build: .
+    env_file: backend/.env
+    environment:
+      NODE_ENV: production
+      PORT: 10000
+    ports:
+      - "5000:10000"
+    restart: unless-stopped

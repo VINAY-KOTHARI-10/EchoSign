@@ -1,0 +1,44 @@
+# EchoSign on Render: ONE web service. The build compiles the React app (frontend/) and the Express
+# backend serves it, so the site and the API share an origin (no CORS, first-party login cookie).
+# Create it with: Render dashboard -> New -> Blueprint -> pick this repo.
+services:
+  - type: web
+    name: echosign
+    runtime: node
+    plan: free
+    buildCommand: cd frontend && npm install && npm run build && cd ../backend && npm install && npx prisma generate && npx prisma migrate deploy
+    startCommand: cd backend && npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 20
+      # ── secrets: paste these in the Render dashboard ──
+      - key: MONGODB_URI
+        sync: false
+      - key: DATABASE_URL        # Neon pooled connection string
+        sync: false
+      - key: DIRECT_URL          # Neon direct (non-pooled) connection string
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALLBACK_URL # https://<your-app>.onrender.com/api/v1/auth/google/callback
+        sync: false
+      - key: FRONTEND_URL        # https://<your-app>.onrender.com   (same address, no trailing slash)
+        sync: false
+      - key: BREVO_API_KEY       # emails the login code; login is impossible without it
+        sync: false
+      - key: EMAIL_FROM          # a sender verified in Brevo
+        sync: false
+      # ── generated for you ──
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true
