@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+// AdminShell - admin navigation shell
 import { ArrowLeft, Captions, Globe, LayoutDashboard, Mic, Users } from 'lucide-react';
 import { Frame } from './AppShell';
 import { useAuth } from '../context/AuthContext';
@@ -25,3 +25,4 @@ export default function AdminShell() {
     </Frame>
   );
 }
+
