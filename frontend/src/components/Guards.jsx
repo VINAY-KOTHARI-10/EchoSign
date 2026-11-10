@@ -1,4 +1,4 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+// Guards - auth route guards with Google redirect fix
 import { useAuth } from '../context/AuthContext';
 
 export function RequireAuth() {
@@ -23,3 +23,4 @@ export function GuestOnly() {
   if (user) return <Navigate to={from || (isAdmin ? '/admin' : '/dashboard')} replace />;
   return <Outlet />;
 }
+

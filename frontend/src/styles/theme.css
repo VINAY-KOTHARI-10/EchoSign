@@ -1,3 +1,4 @@
+/* EchoSign theme - violet caption palette */
 /* Theme v3: richer surfaces on top of the design system. Gradient glow, glassy sidebar, gradient
    primary actions, the violet caption stage, tinted feature tiles and the participants rail.
    Loaded last, so it refines (never replaces) the tokens and components defined before it. */
@@ -228,3 +229,4 @@ button.tile:hover, a.tile:hover { transform: translateY(-2px); box-shadow: 0 14p
 }
 .sign-placeholder.ok { border-color: #b8e6cc; background: #f3fbf6; color: var(--go); }
 .back-link { padding-left: 0; margin-bottom: 6px; }
+
