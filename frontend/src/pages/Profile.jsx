@@ -1,4 +1,5 @@
 // Profile - tabbed account, preferences, accessibility, security
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Accessibility, Laptop, Smartphone, User } from 'lucide-react';
 import * as api from '../api';

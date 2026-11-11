@@ -1,4 +1,5 @@
 // EchoSign - App entry point
+import { Suspense, lazy } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { RequireAuth, RequireAdmin, GuestOnly } from './components/Guards';

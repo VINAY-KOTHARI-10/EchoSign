@@ -1,4 +1,5 @@
 // DisplayPanel - classroom display panel
+import { FONTS, PACES, THEMES } from '../../hooks/useDisplayPrefs';
 import { LANGS } from '../../lib';
 
 // Per-viewer comfort settings: text, spacing, theme, reading pace, translation and alerts.

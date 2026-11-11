@@ -1,4 +1,5 @@
 // Auth - login and registration screen
+import { useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ArrowRight, Eye, EyeOff, Info, Lock, Mail, User } from 'lucide-react';
 import * as api from '../api';

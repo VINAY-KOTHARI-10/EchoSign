@@ -1,4 +1,5 @@
 // AppShell - scrolling sidebar, compact footer, admin nav
+import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { BarChart3, Bot, Captions, ChevronDown, Hand, History, LogOut, Menu, Mic, Shield, Sparkles, Trophy, User, Users, X } from 'lucide-react';
 import Logo from './Logo';

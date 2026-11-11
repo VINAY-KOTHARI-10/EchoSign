@@ -1,4 +1,5 @@
 // CaptionStage - real-time caption display component
+import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, Pencil } from 'lucide-react';
 import { SOURCE_ICON, splitHighlights } from '../../lib/captions';
 import { useToast } from '../../context/ToastContext';
