@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  ArrowLeft, Bell, BookOpen, CalendarClock, Captions, Copy, Download, FileText, Hand, HelpCircle, Maximize2,
+  AlertTriangle, ArrowLeft, Bell, BookOpen, CalendarClock, Captions, Copy, Download, FileText, Hand, HelpCircle, Maximize2,
   MessageCircleQuestion, Mic, MicOff, Pause, Play, RefreshCw, Settings, Share2, Sparkles, Square, Users, WifiOff,
 } from 'lucide-react';
 import * as api from '../api';
@@ -75,7 +75,7 @@ export default function ClassroomRoom() {
   const customGestures = room?.customGestures || [];
 
   const paced = usePacedCaptions(captions, prefs.paceWpm, Boolean(room));
-  const { translations, error: translationError } = useTranslation(code, captions, prefs.translateTo);
+  const { translations, statusOf: translationStatus, summary: translationSummary, error: translationError, retry: retryTranslation } = useTranslation(code, captions, prefs.translateTo);
   const recorder = useRecorder();
 
   // ── Speech → text ────────────────────────────────────────────────────────
@@ -157,7 +157,10 @@ export default function ClassroomRoom() {
       const a = document.createElement('a');
       a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 5000);
-    } catch (err) { toast(err.message, 'error'); }
+    } catch (err) {
+      // A connection that drops part-way through a long transcript surfaces as a bare network error; say what it means.
+      toast(/network|fetch|aborted|interrupted|failed to/i.test(err.message || '') ? 'The download was interrupted, so the file is incomplete. Please try again.' : err.message, 'error');
+    }
   };
 
   const onEdit = async (id, text) => {
@@ -267,6 +270,32 @@ export default function ClassroomRoom() {
         </div>
       )}
       {!ended && rm.connection === 'online' && rm.pending > 0 && <div className="conn-banner info" role="status">Sending {rm.pending} {rm.pending === 1 ? 'caption' : 'captions'}…</div>}
+      {rm.outbox.pending > 0 && !rm.outbox.persistent && (
+        <div className="conn-banner" role="status">
+          <AlertTriangle size={18} aria-hidden="true" />
+          <span>{rm.outbox.storageProblem === 'quota' ? 'This device is out of storage space.' : rm.outbox.storageProblem === 'limit' ? 'Too many captions are waiting.' : 'Captions cannot be saved on this device.'} Captions waiting to send will be lost if you close or refresh this page.</span>
+        </div>
+      )}
+      {rm.outbox.failed.length > 0 && (
+        <div className="conn-banner outbox-failed" role="alert">
+          <AlertTriangle size={18} aria-hidden="true" />
+          <div style={{ flex: 1 }}>
+            <strong>{rm.outbox.failed.length} {rm.outbox.failed.length === 1 ? 'caption was' : 'captions were'} not accepted by the server</strong>
+            <ul className="outbox-list">
+              {rm.outbox.failed.map((f) => (
+                <li key={f.clientId}>
+                  <span className="outbox-text">“{f.text.length > 80 ? `${f.text.slice(0, 80)}…` : f.text}”</span>
+                  <span className="muted"> {f.error}</span>
+                  <button className="btn btn-sm" onClick={() => rm.retryCaption(f.clientId)}>Retry</button>
+                  <button className="btn btn-sm" onClick={() => rm.discardCaption(f.clientId)}>Discard</button>
+                </li>
+              ))}
+            </ul>
+            {rm.outbox.failed.length > 1 && <button className="btn btn-sm" onClick={rm.clearFailedCaptions}>Discard all</button>}
+          </div>
+        </div>
+      )}
+      {!ended && rm.outbox.pending === 0 && rm.outbox.failed.length === 0 && rm.outbox.delivered > 0 && <div className="conn-banner info" role="status">All captions sent.</div>}
 
       <Tabs variant="pill" tabs={tabs} value={tab} onChange={setTab} label="Classroom sections" idPrefix="room" />
 
@@ -291,7 +320,7 @@ export default function ClassroomRoom() {
                   captions={paced.visible} waiting={paced.waiting} interim={rm.interim}
                   draft={speech.listening ? myDraft : ''} draftName={user.username}
                   prefs={prefs} theme={theme} fontCss={FONTS[prefs.font]?.css}
-                  keywords={room.keywords} translations={translations} translationKey={translationKey}
+                  keywords={room.keywords} translations={translations} translationKey={translationKey} translationStatus={translationStatus} translating={Boolean(prefs.translateTo)}
                   canEdit={(c) => meta.canModerate || c.speakerId === user.id} onEdit={onEdit} focusId={focusId}
                   emptyText={ended ? 'No captions were recorded.' : 'Captions appear here as soon as someone speaks, signs or types.'}
                 />
@@ -354,7 +383,7 @@ export default function ClassroomRoom() {
               <TypePanel live={live} onSend={(t) => rm.sendCaption(t, 'TEXT')} />
               <div id="hand-panel"><HandPanel hands={rm.hands} userId={user.id} canModerate={meta.canModerate} isHost={meta.isHost} live={live} onRaise={rm.raiseHand} onLower={rm.lowerHand} /></div>
             </div>
-            <DisplayPanel prefs={prefs} update={updatePrefs} reset={resetPrefs} translationError={prefs.translateTo ? translationError : ''} />
+            <DisplayPanel prefs={prefs} update={updatePrefs} reset={resetPrefs} translationError={prefs.translateTo ? translationError : ''} translationSummary={translationSummary} onRetryTranslation={retryTranslation} />
           </div>
 
           {/* ── Right rail ─────────────────────────────────── */}

@@ -3,7 +3,7 @@ import { FONTS, PACES, THEMES } from '../../hooks/useDisplayPrefs';
 import { LANGS } from '../../lib';
 
 // Per-viewer comfort settings: text, spacing, theme, reading pace, translation and alerts.
-export default function DisplayPanel({ prefs, update, reset, translationError }) {
+export default function DisplayPanel({ prefs, update, reset, translationError, translationSummary, onRetryTranslation }) {
   const setAlert = (patch) => update({ alerts: patch });
 
   return (
@@ -41,8 +41,15 @@ export default function DisplayPanel({ prefs, update, reset, translationError })
           <option value="">Off</option>
           {LANGS.map((l) => <option key={l.code} value={l.name}>{l.name}</option>)}
         </select>
-        {translationError && <span className="error-text" style={{ marginBottom: 0 }}>{translationError}</span>}
       </label>
+      {prefs.translateTo && translationSummary && (
+        <div className="translation-status" role="status" aria-live="polite">
+          {translationSummary.pending > 0 && <span>Translating {translationSummary.pending} {translationSummary.pending === 1 ? 'caption' : 'captions'}…</span>}
+          {translationSummary.retrying > 0 && <span>{translationSummary.retrying} could not be translated; trying again automatically.</span>}
+          {translationSummary.exhausted > 0 && <span className="error-text" style={{ marginBottom: 0 }}>{translationSummary.exhausted} {translationSummary.exhausted === 1 ? 'caption was' : 'captions were'} not translated{translationError ? `: ${translationError}` : '.'}</span>}
+          {translationSummary.failed > 0 && <button type="button" className="btn btn-outline btn-sm" onClick={onRetryTranslation}>Retry translation</button>}
+        </div>
+      )}
 
       <label className="row" style={{ gap: 8, fontSize: 14, fontWeight: 600, marginTop: 12 }}>
         <input type="checkbox" checked={prefs.showNames} onChange={(e) => update({ showNames: e.target.checked })} /> Show speaker names

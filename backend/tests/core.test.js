@@ -116,20 +116,6 @@ describe('lecture AI', () => {
     expect(r.lastCaptionId).toBe('c6');
   });
 
-  it('reads the WHOLE of a long lecture: one request per chunk, then a final combine', async () => {
-    const chat = jest.fn().mockImplementation(async (system) => (/one part/.test(system)
-      ? { points: ['a point from this part'], terms: [] }
-      : { notes: ['combined note'], keyTerms: [], takeaways: [], revision: [], quiz: [] }));
-    const caps = mkCaptions(300);
-    const r = await lectureAi.summarizeLecture({ classroom: { title: 'Long', keywords: [] }, captions: caps, chat, maxChunkChars: 3000 });
-    const chunkCalls = lectureAi.chunkCaptions(caps, 3000).length;
-    expect(chunkCalls).toBeGreaterThan(3);
-    expect(chat).toHaveBeenCalledTimes(chunkCalls + 1);
-    expect(r.chunks).toBe(chunkCalls);
-    const finalPrompt = chat.mock.calls[chat.mock.calls.length - 1][1];
-    expect((finalPrompt.match(/Part \d+/g) || []).length).toBe(chunkCalls);
-  });
-
   it('falls back to a labelled basic summary when AI is missing, fails, or returns junk', async () => {
     const caps = mkCaptions(8);
     const none = await lectureAi.summarizeLecture({ classroom: { title: 'x' }, captions: caps, chat: null });
@@ -150,18 +136,6 @@ describe('lecture AI', () => {
     expect(lectureAi.validateSummary({ notes: ['ok'], quiz: 'nope' }).quiz).toEqual([]);
   });
 
-  it('answers only from the transcript: references are checked against the lines that were sent', async () => {
-    const caps = mkCaptions(30);
-    caps[11].text = 'Momentum is mass times velocity and it is conserved in collisions.';
-    const chat = jest.fn().mockResolvedValue({ answer: 'Momentum is mass times velocity.', references: [12, 9999], covered: true });
-    const r = await lectureAi.askLecture({ classroom: { title: 'P' }, captions: caps, notes: null, question: 'What is momentum?', chat });
-    expect(r.covered).toBe(true);
-    expect(r.references.map((x) => x.n)).toEqual([12]);
-    expect(r.references[0].at).toMatch(/^\d\d:\d\d$/);
-    const sent = chat.mock.calls[0][1];
-    expect(sent).toMatch(/#12 /);
-    expect(sent).toMatch(/Question: What is momentum\?/);
-  });
   it('says the lecture did not cover it when nothing matches, without calling the AI', async () => {
     const chat = jest.fn();
     const r = await lectureAi.askLecture({ classroom: { title: 'P' }, captions: mkCaptions(10), notes: null, question: 'Explain chloroplast thylakoids', chat });

@@ -3,7 +3,10 @@ import { io } from 'socket.io-client';
 import * as api from '../api';
 import { SOCKET_URL, getToken, onTokenChange, refreshAccessToken } from '../api/client';
 import { Outbox } from '../lib/outbox';
+import { getOutboxStore } from '../lib/outboxStore';
+import { createOutboxSender } from '../lib/outboxSender';
 
+const EMPTY_OUTBOX = { pending: 0, failed: [], delivered: 0, persistent: true, storageProblem: '' };
 const byTime = (a, b) => new Date(a.createdAt) - new Date(b.createdAt) || (a.id < b.id ? -1 : 1);
 const newId = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`);
 
@@ -23,12 +26,13 @@ export default function useCaptionRoom(code, { userId, onIncoming, onNotice } = 
   const [, setTick] = useState(0);
   const [count, setCount] = useState(0);
   const [connection, setConnection] = useState('connecting'); // connecting | online | reconnecting | offline
-  const [pending, setPending] = useState(0);                   // captions sent but not yet confirmed
   const [ended, setEnded] = useState(false);
   const [error, setError] = useState('');
   const socketRef = useRef(null);
   const joinedRef = useRef(false);
-  const outbox = useRef(new Outbox(newId)); // captions waiting for the server to confirm them
+  const boxRef = useRef(null);      // the outbox of captions waiting for the server (saved in IndexedDB, per person and class)
+  const senderRef = useRef(null);
+  const [, bumpOutbox] = useState(0);
   const captionsRef = useRef([]);
   const incomingRef = useRef(onIncoming);
   const noticeRef = useRef(onNotice);
@@ -69,41 +73,52 @@ export default function useCaptionRoom(code, { userId, onIncoming, onNotice } = 
   }, [code]);
 
   // ── Reliable sending ───────────────────────────────────────────────────────
-  const settle = useCallback((clientId, caption) => {
-    outbox.current.settle(clientId);
-    setPending(outbox.current.size);
-    if (caption) merge([caption]);
-  }, [merge]);
+  // The outbox (lib/outbox.js) is saved in IndexedDB for this person and class, so captions survive a refresh or crash.
+  // It is opened (and its saved captions loaded) before anything is sent. The sender (lib/outboxSender.js) decides
+  // socket vs HTTP, and what a failure means.
+  const flush = useCallback(() => { senderRef.current?.flush(); }, []);
 
-  const fail = useCallback((clientId) => {
-    if (outbox.current.fail(clientId) === 6) noticeRef.current?.('A caption is taking a while to send. It will keep retrying.', 'info');
-  }, []);
-
-  const flush = useCallback(() => {
-    const socket = socketRef.current;
-    outbox.current.due().forEach(([clientId, item]) => {
-      if (socket?.connected && joinedRef.current) {
-        socket.timeout(8000).emit('class:caption', { code, text: item.text, source: item.source, clientId }, (err, res) => {
-          if (err || !res) return fail(clientId);
-          if (res.ok) return settle(clientId, res.caption);
-          if (res.retryable || res.code === 'NOT_JOINED') return fail(clientId);
-          noticeRef.current?.(res.error || 'Caption was not accepted', 'error');
-          return settle(clientId);
-        });
-      } else if (typeof navigator === 'undefined' || navigator.onLine) {
-        // The live connection is down but the network is up: store it over HTTP with the same id.
-        api.classrooms.postCaption(code, { text: item.text, source: item.source, clientId })
-          .then((r) => settle(clientId, r.data.caption))
-          .catch((e) => { if (e.status === 409 || e.status === 403) { noticeRef.current?.(e.message, 'error'); settle(clientId); } else fail(clientId); });
-      } else { outbox.current.release(clientId); }
-    });
-  }, [code, fail, settle]);
+  useEffect(() => {
+    let cancelled = false;
+    const box = new Outbox({ newId, store: null, userId: userId || '', classroomCode: code, holding: true });
+    boxRef.current = box; senderRef.current = null;
+    bumpOutbox((n) => n + 1);
+    (async () => {
+      const store = await getOutboxStore();             // null when IndexedDB is unavailable: memory-only
+      if (cancelled) return;
+      // Re-create the box over the store; captions typed in the instant before storage opened are carried over.
+      const real = new Outbox({ newId, store, userId: userId || '', classroomCode: code, onChange: () => bumpOutbox((n) => n + 1) });
+      await real.ready;                                  // the saved captions are loaded before anything is sent
+      if (cancelled) return;
+      real.adopt([...box.items.values()]);
+      boxRef.current = real;
+      senderRef.current = createOutboxSender({
+        box: real,
+        socketReady: () => Boolean(socketRef.current?.connected && joinedRef.current),
+        viaSocket: (item) => new Promise((resolve) => {
+          socketRef.current.timeout(8000).emit('class:caption', { code, text: item.text, source: item.source, clientId: item.clientId }, (err, res) => resolve(err ? null : res));
+        }),
+        viaHttp: (item) => api.classrooms.postCaption(code, { text: item.text, source: item.source, clientId: item.clientId }),
+        isOnline: () => typeof navigator === 'undefined' || navigator.onLine,
+        hasAuth: () => Boolean(getToken()),
+        refreshAuth: () => refreshAccessToken(),
+        notify: (message, kind) => noticeRef.current?.(message, kind),
+        onDelivered: (caption) => { if (!cancelled) merge([caption]); },
+      });
+      bumpOutbox((n) => n + 1);
+      if (!cancelled) senderRef.current.flush();
+    })();
+    return () => { cancelled = true; boxRef.current?.dispose(); boxRef.current = null; senderRef.current = null; };
+  }, [code, userId, merge]);
 
   const sendCaption = useCallback((text, source) => {
-    outbox.current.add(text, source);
-    setPending(outbox.current.size);
+    boxRef.current?.add(text, source);
     flush();
   }, [flush]);
+
+  const retryCaption = useCallback((clientId) => { if (boxRef.current?.retry(clientId)) flush(); }, [flush]);
+  const discardCaption = useCallback((clientId) => { boxRef.current?.discard(clientId); }, []);
+  const clearFailedCaptions = useCallback(() => { boxRef.current?.clearFailed(); }, []);
 
   // ── Live connection while the class is running ─────────────────────────────
   const active = Boolean(room?.active) && !ended;
@@ -147,7 +162,7 @@ export default function useCaptionRoom(code, { userId, onIncoming, onNotice } = 
     });
     // Access tokens are short-lived: tell the server about each refreshed one, and answer if it asks.
     const sendToken = () => { if (socket.connected) socket.emit('auth:refresh', { token: getToken() }); };
-    const offToken = onTokenChange(sendToken);
+    const offToken = onTokenChange(() => { sendToken(); flush(); }); // a new sign-in releases captions that were waiting for one
     socket.on('auth:expired', async () => { if (await refreshAccessToken()) sendToken(); });
 
     socket.on('class:presence', (p) => setCount(p.count));
@@ -190,7 +205,7 @@ export default function useCaptionRoom(code, { userId, onIncoming, onNotice } = 
   // Retry unsent captions, and re-render so "speaking" indicators fade out on their own.
   useEffect(() => {
     if (!active) return undefined;
-    const t = setInterval(() => { setTick((n) => n + 1); if (outbox.current.size) flush(); }, 1500);
+    const t = setInterval(() => { setTick((n) => n + 1); if (boxRef.current?.size) flush(); }, 1500);
     return () => clearInterval(t);
   }, [active, flush]);
   const isSpeaking = (id) => Date.now() - (lastSpeech.current[id] || 0) < 4000;
@@ -201,10 +216,12 @@ export default function useCaptionRoom(code, { userId, onIncoming, onNotice } = 
   const lowerHand = useCallback((id) => socketRef.current?.emit('class:hand:lower', { code, userId: id }), [code]);
   const replaceCaption = useCallback((cap) => setCaptions((list) => list.map((c) => (c.id === cap.id ? cap : c))), []);
 
+  const outboxView = boxRef.current ? boxRef.current.snapshot() : EMPTY_OUTBOX;
   const live = connection === 'online' && !ended;
   return {
     participants, isSpeaking, captionsActive,
-    room, setRoom, replaceCaption, meta, captions, hasMore, interim, hands, count, connection, pending,
+    room, setRoom, replaceCaption, meta, captions, hasMore, interim, hands, count, connection, pending: outboxView.pending, outbox: outboxView,
+    retryCaption, discardCaption, clearFailedCaptions,
     connected: connection === 'online', ended, setEnded, error, refreshMeta,
     live, sendCaption, sendInterim, raiseHand, lowerHand,
   };

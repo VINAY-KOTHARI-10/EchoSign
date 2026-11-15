@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import * as api from '../api';
 import { refreshAccessToken, refreshFailedOffline, setToken } from '../api/client';
+import { purgeUserOutbox } from '../lib/outboxStore';
 
 const LAST_USER = 'echosign_last_user';
 const readLastUser = () => { try { return JSON.parse(localStorage.getItem(LAST_USER)); } catch { return null; } };
@@ -61,6 +62,8 @@ export function AuthProvider({ children }) {
   }, [user]);
 
   const logout = useCallback(async () => {
+    // Captions this person had not sent yet are theirs: remove them from this device before the next person uses it.
+    try { await purgeUserOutbox(user?.id); } catch { /* best effort */ }
     try { await api.auth.logout(); } catch { /* ignore */ }
     setToken(null);
     setUser(null);
@@ -69,7 +72,7 @@ export function AuthProvider({ children }) {
     try { localStorage.removeItem(LAST_USER); } catch { /* ignore */ }
     // Saved offline notes belong to the person who signed out; remove them from this device.
     try { navigator.serviceWorker?.controller?.postMessage({ type: 'CLEAR_USER_CACHE' }); } catch { /* no service worker */ }
-  }, []);
+  }, [user]);
 
   const can = useCallback((permission) => perms.has(permission), [perms]);
 

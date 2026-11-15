@@ -66,7 +66,9 @@ export default function SummaryPanel({ room, setRoom, canModerate, captionCount 
             </p>
             {s && (s.provider === 'basic'
               ? <p style={{ marginTop: 6 }}><StatusBadge status="warn">Basic summary, not AI</StatusBadge> <span className="muted" style={{ fontSize: 13 }}>{s.fallbackReason || 'The AI service was unavailable.'} Try again later for full notes and a quiz.</span></p>
-              : <p style={{ marginTop: 6 }}><StatusBadge status="info">AI-generated from the transcript</StatusBadge> <span className="muted" style={{ fontSize: 13 }}>{s.captionCount} captions{s.chunks > 1 ? `, read in ${s.chunks} parts` : ''}. Check important facts against the lecture.</span></p>)}
+              : s.coverage === 'partial'
+                ? <p style={{ marginTop: 6 }}><StatusBadge status="warn">Partly AI-generated</StatusBadge> <span className="muted" style={{ fontSize: 13 }}>{s.captionCount} captions, read in {s.chunks} parts. {s.partialReason} Check important facts against the lecture.</span></p>
+                : <p style={{ marginTop: 6 }}><StatusBadge status="info">AI-generated from the transcript</StatusBadge> <span className="muted" style={{ fontSize: 13 }}>{s.captionCount} captions{s.chunks > 1 ? `, read in ${s.chunks} parts` : ''}. Check important facts against the lecture.</span></p>)}
             {s && s.captionCount !== undefined && captionCount > s.captionCount && <p className="notice" style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}><AlertTriangle size={16} aria-hidden="true" /> The class has {captionCount - s.captionCount} new captions since these notes were made.</p>}
           </div>
           <div className="row" style={{ gap: 8 }}>

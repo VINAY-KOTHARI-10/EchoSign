@@ -5,8 +5,9 @@
 //   node scripts/maintenance.js retention --apply    delete it
 //
 // reconcile   PostgreSQL is the source of truth. Profile statistics are recomputed from the practice_sessions rows, and
-//             every user gets a MongoDB activity document (registration writes Postgres first, then Mongo, so a crash
-//             in between can leave a user without one).
+//             the MongoDB activity document (totals, recent sessions, per-language progress) is rebuilt from the same rows
+//             when it is missing or stale, e.g. after a crash between the two writes or a deleted session while MongoDB
+//             was down. Streak, weekly stats and badges are left alone.
 // retention   Audit-log entries older than AUDIT_RETENTION_DAYS (default 365) are removed. Ended classes older than
 //             CLASS_RETENTION_DAYS are removed ONLY if that variable is set (default: keep classes forever).
 //             Login sessions and one-time codes expire by themselves (MongoDB TTL indexes).
@@ -15,6 +16,7 @@ const { prisma } = require('../src/config/postgres');
 const { connectMongoDB } = require('../src/config/mongodb');
 const UserActivity = require('../src/models/mongo/UserActivity');
 const { profileStats } = require('../src/utils/stats');
+const { rebuildActivity } = require('../src/utils/profileSync');
 const mongoose = require('mongoose');
 
 const [task, ...flags] = process.argv.slice(2);
@@ -23,7 +25,7 @@ const say = (msg) => console.log(msg);
 
 async function reconcile() {
   const users = await prisma.user.findMany({ select: { id: true, username: true, profile: true } });
-  let statsFixed = 0; let activityMissing = 0; let profilesMissing = 0;
+  let statsFixed = 0; let activityMissing = 0; let profilesMissing = 0; let activityDrift = 0;
   for (const u of users) {
     if (!u.profile) { profilesMissing += 1; say(`  ${u.username}: no profile row${apply ? ', creating' : ''}`); if (apply) await prisma.userProfile.create({ data: { userId: u.id } }); }
     const agg = await prisma.practiceSession.aggregate({ where: { userId: u.id }, _count: { _all: true }, _avg: { accuracy: true }, _sum: { duration: true } });
@@ -35,12 +37,18 @@ async function reconcile() {
       say(`  ${u.username}: stats ${have.totalSessions}/${have.totalMinutes}min/${have.avgAccuracy}% -> ${want.totalSessions}/${want.totalMinutes}min/${want.avgAccuracy}%`);
       if (apply) await prisma.userProfile.update({ where: { userId: u.id }, data: want });
     }
-    if (!(await UserActivity.exists({ userId: u.id }))) {
-      activityMissing += 1; say(`  ${u.username}: no MongoDB activity document${apply ? ', creating' : ''}`);
-      if (apply) await UserActivity.create({ userId: u.id });
+    const activity = await UserActivity.findOne({ userId: u.id }).select('totalSessions totalMinutes recentSessions');
+    if (!activity) {
+      activityMissing += 1; say(`  ${u.username}: no MongoDB activity document${apply ? ', creating from PostgreSQL' : ''}`);
+      if (apply) await rebuildActivity(u.id, { prisma, UserActivity });
+    } else if (activity.totalSessions !== want.totalSessions || activity.totalMinutes !== want.totalMinutes
+      || (activity.recentSessions || []).length !== Math.min(50, want.totalSessions)) {
+      activityDrift += 1;
+      say(`  ${u.username}: MongoDB activity ${activity.totalSessions}/${activity.totalMinutes}min/${(activity.recentSessions || []).length} recent -> ${want.totalSessions}/${want.totalMinutes}min${apply ? ', rebuilding from PostgreSQL' : ''}`);
+      if (apply) await rebuildActivity(u.id, { prisma, UserActivity });
     }
   }
-  say(`${users.length} users checked: ${statsFixed} with drifting statistics, ${activityMissing} missing activity documents, ${profilesMissing} missing profiles. ${apply ? 'Repaired.' : 'Nothing changed (use --apply).'}`);
+  say(`${users.length} users checked: ${statsFixed} with drifting statistics, ${activityMissing} missing activity documents, ${activityDrift} with stale MongoDB activity, ${profilesMissing} missing profiles. ${apply ? 'Repaired.' : 'Nothing changed (use --apply).'}`);
 }
 
 async function retention() {

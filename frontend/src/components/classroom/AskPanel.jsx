@@ -53,6 +53,8 @@ export default function AskPanel({ room, captionCount, onJump }) {
                   {m.provider === 'search' ? <StatusBadge status="warn">Search only, AI unavailable</StatusBadge>
                     : <StatusBadge status={m.covered ? 'info' : 'warn'}>{m.covered ? 'From the lecture' : 'Not covered in the lecture'}</StatusBadge>}
                 </div>
+                {m.extraExplanation && <p className="muted" style={{ fontSize: 13 }}>Part of this answer is extra explanation that was not said in the lecture.</p>}
+                {m.coverage?.note && <p className="muted" style={{ fontSize: 13 }}>{m.coverage.note}</p>}
                 {m.references?.length > 0 && (
                   <ul className="ask-refs" aria-label="Where this was said">
                     {m.references.map((r) => (

@@ -17,7 +17,7 @@ Browser ──HTTPS──▶  EchoSign service (Docker)
 | Service | Used for | Where |
 |---|---|---|
 | Neon PostgreSQL | accounts, classes, captions, attendance, audit log | neon.tech: copy the **pooled** and **direct** URLs (both end `?sslmode=require`) |
-| MongoDB Atlas | login sessions, one-time codes, activity feed | mongodb.com/atlas: Network Access must allow your host (`0.0.0.0/0` on Render) |
+| MongoDB Atlas | login sessions, one-time codes, pronunciation records, activity feed | mongodb.com/atlas: Network Access must allow your host (`0.0.0.0/0` on Render) |
 | Brevo | emails the login code, **required** (no code, no sign-in) | brevo.com: verify a sender address |
 | Groq | AI notes, lecture questions, translation (optional; basic fallbacks without it) | console.groq.com |
 | Google OAuth | "Continue with Google" (optional) | Google Cloud Console |

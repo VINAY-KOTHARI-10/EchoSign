@@ -8,9 +8,16 @@ function Highlighted({ text, keywords }) {
   return splitHighlights(text, keywords).map((p, i) => (p.hit ? <mark key={i} className="kw">{p.text}</mark> : <span key={i}>{p.text}</span>));
 }
 
+// Small note under a caption that has no translation yet. The original text is never shown in its place.
+const NOTE = { pending: 'Translating…', none: 'Translating…', retrying: 'Translation failed, trying again…', failed: 'Not translated' };
+function TranslationNote({ status }) {
+  if (!NOTE[status]) return null;
+  return <span className="caption-tr-note" data-status={status}>{NOTE[status]}</span>;
+}
+
 // The live caption board: keyword highlights, translations, inline corrections, reading-pace queue.
 export default function CaptionStage({
-  captions, interim, draft, prefs, theme, fontCss, keywords, translations, translationKey,
+  captions, interim, draft, prefs, theme, fontCss, keywords, translations, translationKey, translationStatus, translating,
   canEdit, onEdit, focusId, waiting, emptyText, draftName,
 }) {
   const toast = useToast();
@@ -77,6 +84,7 @@ export default function CaptionStage({
                 </>
               )}
               {tr && editing?.id !== c.id && <span className="caption-tr">{tr}</span>}
+              {translating && !tr && editing?.id !== c.id && translationStatus && <TranslationNote status={translationStatus(c)} />}
             </div>
           );
         })}

@@ -1,43 +1,38 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as api from '../api';
+import { keyOf } from '../lib/translationState';
+import { TranslationRunner } from '../lib/translationRunner';
 
-// Translates captions into `target` (a language name) in small batches. Returns { id|text: translation }.
-// Edited captions are re-translated because the key includes the text.
-export const translationKey = (c) => `${c.id}|${c.text}`;
+// Translates captions into `target` (a language name) in small batches, tracking every caption separately.
+// Returns:
+//   translations  { key: text }  only real, successful translations
+//   statusOf(c)   'none' | 'pending' | 'retrying' | 'failed' | 'done'
+//   summary       { pending, failed, retrying, exhausted, error, nextRetryAt }
+//   retry()       manual retry of every failed caption
+// A caption that cannot be translated is shown as untranslated with its status, never as if the original were a
+// translation. The original transcript is never modified. All the rules live in lib/translationState.js and
+// lib/translationRunner.js (both unit-tested); this hook only connects them to React.
+export const translationKey = keyOf;
 
 export default function useTranslation(code, captions, target) {
-  const [map, setMap] = useState({});
-  const [error, setError] = useState('');
-  const pending = useRef(new Set());
-  const failures = useRef(0);
+  const [version, setVersion] = useState(0);
+  const runnerRef = useRef(null);
+  if (!runnerRef.current) {
+    runnerRef.current = new TranslationRunner({ translate: (c, texts, t) => api.classrooms.translate(c, texts, t), onChange: () => setVersion((v) => v + 1) });
+  }
+  const runner = runnerRef.current;
 
-  // A new target language starts a fresh set of translations.
-  useEffect(() => { setMap({}); setError(''); pending.current = new Set(); failures.current = 0; }, [target, code]);
+  useEffect(() => { runner.setContext(code, target); return () => runner.dispose(); }, [runner, code, target]);
+  // Safe on every change: the runner sends nothing for pending, done, exhausted or still-waiting captions.
+  useEffect(() => { runner.update(captions); }, [runner, captions, version]);
 
-  useEffect(() => {
-    if (!target || failures.current >= 3) return undefined;
-    const todo = captions.filter((c) => !map[translationKey(c)] && !pending.current.has(translationKey(c))).slice(-20);
-    if (!todo.length) return undefined;
-
-    const timer = setTimeout(async () => {
-      todo.forEach((c) => pending.current.add(translationKey(c)));
-      try {
-        const res = await api.classrooms.translate(code, todo.map((c) => c.text), target);
-        setMap((m) => {
-          const next = { ...m };
-          todo.forEach((c, i) => { next[translationKey(c)] = res.data.translations[i]; });
-          return next;
-        });
-        failures.current = 0; setError('');
-      } catch (err) {
-        failures.current += 1;
-        setError(err.message);
-      } finally {
-        todo.forEach((c) => pending.current.delete(translationKey(c)));
-      }
-    }, 500); // wait a moment so a burst of captions goes out as one request
-    return () => clearTimeout(timer);
-  }, [captions, target, code, map]);
-
-  return { translations: map, error };
+  const retry = useCallback(() => runner.retry(), [runner]);
+  const translations = useMemo(() => {
+    const out = {};
+    captions.forEach((c) => { const t = runner.store.translationFor(c); if (t) out[keyOf(c)] = t; });
+    return out;
+  }, [runner, captions, version]); // eslint-disable-line
+  const statusOf = useCallback((c) => runner.store.statusFor(c), [runner, version]); // eslint-disable-line
+  const summary = runner.store.summary();
+  return { translations, statusOf, summary, error: summary.error, retry };
 }

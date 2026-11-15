@@ -88,7 +88,8 @@ async function removeLeftovers() {
       code = 0;
     } else {
       const only = process.argv.slice(2).find((a) => !a.startsWith('--'));
-      const run = spawn(process.execPath, ['--test', '--test-concurrency=1', '--test-timeout=180000', only || 'e2e/echosign.e2e.js'], { env, stdio: 'inherit' });
+      const pattern = process.env.E2E_PATTERN ? [`--test-name-pattern=${process.env.E2E_PATTERN}`] : []; // run just the matching describe/it
+      const run = spawn(process.execPath, ['--test', '--test-concurrency=1', '--test-timeout=180000', ...pattern, only || 'e2e/echosign.e2e.js'], { env, stdio: 'inherit' });
       code = await new Promise((resolve) => run.on('exit', resolve));
     }
   } catch (err) {

@@ -7,7 +7,7 @@ EchoSign uses two databases on purpose, with a clear source of truth for each ki
 | Database | Holds | Why |
 |---|---|---|
 | **PostgreSQL** (Prisma) | users, profiles, classrooms, **captions**, class members (attendance), practice sessions, chat messages, languages, achievements, audit log | Relational data with foreign keys, transactions and ordered queries. **Source of truth** for anything a person might need to rely on later (a transcript, attendance, statistics). |
-| **MongoDB** (Mongoose) | login sessions (hashed refresh tokens), one-time login codes, the practice activity feed (`UserActivity`) | Short-lived or document-shaped data. Sessions and codes **expire by themselves** (TTL indexes). |
+| **MongoDB** (Mongoose) | login sessions (hashed refresh tokens), one-time login codes, pronunciation attempt records (`PronunciationRecord`), the practice activity feed (`UserActivity`) | Short-lived or document-shaped data. Sessions and codes **expire by themselves** (TTL indexes). |
 
 ### Partial writes between the two
 
@@ -15,6 +15,8 @@ Registration and practice sessions touch both. The rule is: **write PostgreSQL f
 
 - A practice session and the profile statistics are written in **one PostgreSQL transaction**. Statistics are *recomputed* from the session rows (count, average, sum), never incremented, so retries cannot double count.
 - The MongoDB activity feed update is best effort. If it fails the session is still saved and a warning is logged.
+- **Deleting a practice session** checks that it belongs to the person, then deletes the row **and recomputes the profile (`totalSessions`, `totalMinutes`, `avgAccuracy`) in the same PostgreSQL transaction**. Writes for one person are serialised with a transaction-level advisory lock, so two deletes (or a delete and a create) at once cannot leave the profile out of step. Deleting the last session gives zeros; a missing profile is created. A repeated delete is a 404 and changes nothing.
+- After the transaction, the `UserActivity` document in MongoDB is **rebuilt from PostgreSQL** (`totalSessions`, `totalMinutes`, `recentSessions`, `languageProgress`), never decremented. Streak, weekly stats and badges are not touched. If MongoDB is down, `maintenance reconcile` finds and repairs the difference later.
 - `npm --prefix backend run maintenance -- reconcile` reports drift (statistics that disagree with the rows, users without an activity document or profile). Add `--apply` to repair. It is safe to run any time, as often as you like.
 
 ## Captions: the model
@@ -30,7 +32,16 @@ Caption(id, classroomId, speakerId, speakerName, source, text, createdAt,
 - `speakerId` and `speakerName` come from the authenticated user, never from the request.
 - `createdAt` is stamped when the server *receives* the caption, because database writes can finish out of order.
 - Edits keep `originalText`, the editor and the time.
-- Pages are ordered by `(createdAt, id)` and use cursors, so there is no fixed cap and no skipped or repeated rows.
+- Pages are ordered by `(createdAt, id)` and use cursors, so there is no fixed cap and no skipped or repeated rows, even when many captions share one timestamp.
+
+## Long lectures
+
+Nothing assumes a transcript fits in memory or in 20,000 / 100,000 rows. Summaries, questions, exports and insights all read the transcript a page at a time (`backend/src/utils/captionPages.js`).
+
+- **Export** (TXT, SRT, print page) streams page by page and waits for the socket to drain. If something fails after the download has started, the connection is dropped, so the file cannot be mistaken for a complete one.
+- **Summary** is hierarchical (map-reduce): the transcript is condensed in chunks, the condensed parts are combined in levels until they fit one request, then the final notes are written. Failed chunks are retried, then replaced by a labelled extract. The result says `coverage: complete | partial | fallback`, with the reason and the time ranges that were not read by the AI.
+- **Ask your lecture** searches the whole transcript in the database (keywords, bounded pages), keeps only the best matches with a little context, and answers from those. References are real captions with timestamps measured from the first caption. A general question with no keywords uses evenly spread moments and says so. Anything the model adds that was not said in the lecture is labelled.
+- **Insights** are one paged pass that keeps only running totals.
 
 ## Attendance
 

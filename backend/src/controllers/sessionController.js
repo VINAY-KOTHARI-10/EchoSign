@@ -8,7 +8,9 @@ const { prisma } = require('../config/postgres');
 const UserActivity = require('../models/mongo/UserActivity');
 const { AppError } = require('../middleware/errorMiddleware');
 const logger = require('../utils/logger');
-const { profileStats } = require('../utils/stats');
+// Writers for one user queue behind an advisory lock, so allow for the wait (the defaults are 2 s / 5 s).
+const TX_OPTIONS = { maxWait: 10000, timeout: 30000 };
+const { lockUser, recomputeProfile, rebuildActivity } = require('../utils/profileSync');
 
 /**
  * POST /api/v1/sessions
@@ -29,19 +31,16 @@ const createSession = async (req, res, next) => {
 
     // PostgreSQL is the source of truth: the session and the profile statistics are written together, and the
     // statistics are recomputed from every session (not incremented), so a retry can never double count.
+    // The user row is locked first, so a delete running at the same moment is applied before or after this one, never
+    // in between (see utils/profileSync.js).
     const session = await prisma.$transaction(async (tx) => {
+      await lockUser(tx, userId);
       const created = await tx.practiceSession.create({
         data: { userId, language, duration, accuracy, wordsAttempted, wordsCorrect, transcript, feedback },
       });
-      const agg = await tx.practiceSession.aggregate({
-        where: { userId }, _count: { _all: true }, _avg: { accuracy: true }, _sum: { duration: true },
-      });
-      await tx.userProfile.update({
-        where: { userId },
-        data: { ...profileStats({ count: agg._count._all, avgAccuracy: agg._avg.accuracy, sumDuration: agg._sum.duration }), lastActiveAt: new Date() },
-      });
+      await recomputeProfile(tx, userId, { touch: true });
       return created;
-    });
+    }, TX_OPTIONS);
 
     // MongoDB activity feed is best effort. If it fails the session is still saved and scripts/maintenance.js repairs it.
     try {
@@ -141,12 +140,21 @@ const getSession = async (req, res, next) => {
  */
 const deleteSession = async (req, res, next) => {
   try {
-    const session = await prisma.practiceSession.findFirst({
-      where: { id: req.params.id, userId: req.user.id },
-    });
-    if (!session) throw new AppError('Session not found', 404);
+    const userId = req.user.id;
+    // Delete and recompute in ONE transaction, under the user lock. The delete is scoped to the caller's own sessions, so
+    // someone else's id (or one that was already deleted, e.g. a double click) simply is not found.
+    await prisma.$transaction(async (tx) => {
+      await lockUser(tx, userId);
+      const { count } = await tx.practiceSession.deleteMany({ where: { id: req.params.id, userId } });
+      if (count === 0) throw new AppError('Session not found', 404);
+      await recomputeProfile(tx, userId);
+    }, TX_OPTIONS);
 
-    await prisma.practiceSession.delete({ where: { id: req.params.id } });
+    // The MongoDB activity document holds copies of these numbers. Rebuild them from PostgreSQL (never decrement).
+    // Best effort: if MongoDB is down the deletion stands and `maintenance reconcile` repairs it.
+    try { await rebuildActivity(userId, { prisma, UserActivity }); }
+    catch (err) { logger.warn(`Activity rebuild after deleting session ${req.params.id} failed (run maintenance reconcile): ${err.message}`); }
+
     res.json({ success: true, message: 'Session deleted' });
   } catch (error) {
     next(error);

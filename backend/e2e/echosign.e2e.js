@@ -544,3 +544,220 @@ describe('ending and reopening a class', () => {
     assert.ok(audit.json.data.rows.some((r) => r.targetId === classroom.id));
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('practice sessions and profile statistics (real PostgreSQL + MongoDB)', () => {
+  const UserActivity = require('../src/models/mongo/UserActivity');
+  let learner; let other;
+  const mkSession = (token, accuracy, duration, language = 'en') =>
+    api('POST', '/sessions', { token, body: { language, duration, accuracy, wordsAttempted: 10, wordsCorrect: 8 } });
+  const profileOf = (id) => prisma.userProfile.findUnique({ where: { userId: id } });
+  const truth = async (id) => {
+    const a = await prisma.practiceSession.aggregate({ where: { userId: id }, _count: { _all: true }, _avg: { accuracy: true }, _sum: { duration: true } });
+    return { totalSessions: a._count._all, totalMinutes: Math.round((a._sum.duration || 0) / 60), avgAccuracy: Math.round((a._avg.accuracy || 0) * 100) / 100 };
+  };
+
+  before(async () => {
+    learner = await makeUser('learner');
+    other = await makeUser('otherlearner');
+    await UserActivity.create({ userId: learner.id });
+  });
+
+  it('creating sessions keeps the profile equal to the rows', async () => {
+    const ids = [];
+    for (const [acc, dur] of [[100, 600], [50, 1200], [90, 60]]) ids.push((await mkSession(learner.token, acc, dur)).json.data.session.id);
+    learner.sessionIds = ids;
+    const p = await profileOf(learner.id);
+    assert.deepEqual({ totalSessions: p.totalSessions, totalMinutes: p.totalMinutes, avgAccuracy: p.avgAccuracy }, await truth(learner.id));
+    assert.equal(p.totalSessions, 3);
+  });
+
+  it("someone else's session cannot be deleted, and nothing changes", async () => {
+    const before = await profileOf(learner.id);
+    const r = await api('DELETE', `/sessions/${learner.sessionIds[0]}`, { token: other.token });
+    assert.equal(r.status, 404);
+    assert.equal(await prisma.practiceSession.count({ where: { userId: learner.id } }), 3);
+    assert.equal((await profileOf(learner.id)).totalSessions, before.totalSessions);
+  });
+
+  it('deleting one of several sessions recalculates count, minutes and average from PostgreSQL', async () => {
+    const r = await api('DELETE', `/sessions/${learner.sessionIds[1]}`, { token: learner.token });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.json, { success: true, message: 'Session deleted' });
+    const p = await profileOf(learner.id);
+    assert.deepEqual({ totalSessions: p.totalSessions, totalMinutes: p.totalMinutes, avgAccuracy: p.avgAccuracy }, { totalSessions: 2, totalMinutes: 11, avgAccuracy: 95 });
+  });
+
+  it('the MongoDB activity document is rebuilt from PostgreSQL, not decremented', async () => {
+    const a = await UserActivity.findOne({ userId: learner.id }).lean();
+    assert.equal(a.totalSessions, 2);
+    assert.equal(a.totalMinutes, 11);
+    assert.deepEqual(a.recentSessions.map((s) => s.sessionId).sort(), [learner.sessionIds[0], learner.sessionIds[2]].sort());
+    assert.equal(a.languageProgress.en.sessionsCompleted, 2);
+  });
+
+  it('deleting the same session again is a 404 and the numbers stay right', async () => {
+    assert.equal((await api('DELETE', `/sessions/${learner.sessionIds[1]}`, { token: learner.token })).status, 404);
+    assert.equal((await profileOf(learner.id)).totalSessions, 2);
+  });
+
+  it('concurrent deletes of one session: exactly one succeeds', async () => {
+    const extra = (await mkSession(learner.token, 70, 300)).json.data.session.id;
+    const results = await Promise.all(Array.from({ length: 6 }, () => api('DELETE', `/sessions/${extra}`, { token: learner.token })));
+    assert.equal(results.filter((r) => r.status === 200).length, 1);
+    assert.equal(results.filter((r) => r.status === 404).length, 5);
+    const p = await profileOf(learner.id);
+    assert.deepEqual({ totalSessions: p.totalSessions, totalMinutes: p.totalMinutes, avgAccuracy: p.avgAccuracy }, await truth(learner.id));
+  });
+
+  it('concurrent creates and deletes never leave the profile out of step with the rows', async () => {
+    const seed = [];
+    for (let i = 0; i < 4; i += 1) seed.push((await mkSession(learner.token, 40 + i * 10, 120 * (i + 1))).json.data.session.id);
+    const ops = [
+      ...seed.slice(0, 3).map((id) => api('DELETE', `/sessions/${id}`, { token: learner.token })),
+      ...Array.from({ length: 4 }, (_, i) => mkSession(learner.token, 60 + i, 90 + i * 30)),
+    ];
+    const results = await Promise.all(ops);
+    assert.ok(results.every((r) => [200, 201].includes(r.status)), results.map((r) => `${r.status}${r.status >= 400 ? ' ' + (r.json && r.json.error) : ''}`).join(' | '));
+    const p = await profileOf(learner.id);
+    assert.deepEqual({ totalSessions: p.totalSessions, totalMinutes: p.totalMinutes, avgAccuracy: p.avgAccuracy }, await truth(learner.id), 'profile equals the rows after interleaved writes');
+  });
+
+  it('deleting the last session leaves zeros', async () => {
+    const all = await prisma.practiceSession.findMany({ where: { userId: learner.id }, select: { id: true } });
+    for (const s of all) assert.equal((await api('DELETE', `/sessions/${s.id}`, { token: learner.token })).status, 200);
+    const p = await profileOf(learner.id);
+    assert.deepEqual({ totalSessions: p.totalSessions, totalMinutes: p.totalMinutes, avgAccuracy: p.avgAccuracy }, { totalSessions: 0, totalMinutes: 0, avgAccuracy: 0 });
+    const a = await UserActivity.findOne({ userId: learner.id }).lean();
+    assert.equal(a.totalSessions, 0);
+    assert.equal(a.recentSessions.length, 0);
+  });
+
+  it('a missing profile is created on the next change, with correct numbers', async () => {
+    const lone = await makeUser('lone');
+    await prisma.userProfile.delete({ where: { userId: lone.id } });
+    const made = await mkSession(lone.token, 80, 120);
+    assert.equal(made.status, 201);
+    assert.deepEqual({ ...(await truth(lone.id)) }, { totalSessions: 1, totalMinutes: 2, avgAccuracy: 80 });
+    const p = await profileOf(lone.id);
+    assert.equal(p.totalSessions, 1);
+    await prisma.userProfile.delete({ where: { userId: lone.id } });
+    assert.equal((await api('DELETE', `/sessions/${made.json.data.session.id}`, { token: lone.token })).status, 200);
+    assert.equal((await profileOf(lone.id)).totalSessions, 0);
+  });
+
+  it('maintenance reconcile repairs a stale MongoDB document and a drifting profile', async () => {
+    const u = await makeUser('stale');
+    await UserActivity.create({ userId: u.id });
+    await mkSession(u.token, 90, 600); await mkSession(u.token, 70, 600);
+    await UserActivity.updateOne({ userId: u.id }, { $set: { totalSessions: 40, totalMinutes: 999 } });
+    await prisma.userProfile.update({ where: { userId: u.id }, data: { totalSessions: 7, totalMinutes: 7, avgAccuracy: 1 } });
+    const { execFileSync } = require('node:child_process');
+    const run = (...args) => execFileSync(process.execPath, ['scripts/maintenance.js', 'reconcile', ...args], { env: process.env, encoding: 'utf8' });
+    assert.match(run(), /stale MongoDB activity/);
+    assert.equal((await profileOf(u.id)).totalSessions, 7, 'a dry run changes nothing');
+    run('--apply');
+    assert.deepEqual({ ...(await truth(u.id)) }, { totalSessions: 2, totalMinutes: 20, avgAccuracy: 80 });
+    const p = await profileOf(u.id);
+    assert.equal(p.totalSessions, 2);
+    const a = await UserActivity.findOne({ userId: u.id }).lean();
+    assert.deepEqual({ s: a.totalSessions, m: a.totalMinutes }, { s: 2, m: 20 });
+  });
+});
+
+// A lecture longer than the old 20,000-caption limits, against the real database. Many captions share one timestamp
+// (groups of 7), so paging has to be stable on (createdAt, id) rather than on time alone.
+describe('long lectures (real PostgreSQL, more than 20,000 captions)', () => {
+  const { pageCaptions } = require('../src/utils/captionPages');
+  const TOTAL = 21000;
+  let room;
+  const LAST_WORD = 'zebracrossing';
+
+  before(async () => {
+    const made = await api('POST', '/classrooms', { token: teacher.token, body: { title: 'Very long lecture', language: 'en', keywords: ['force'] } });
+    room = made.json.data.classroom;
+    const start = Date.now() - 3 * 60 * 60 * 1000;
+    const rows = Array.from({ length: TOTAL }, (_, i) => ({
+      classroomId: room.id, speakerId: teacher.id, speakerName: teacher.username, source: i % 4 === 0 ? 'TEXT' : 'SPEECH',
+      text: i === TOTAL - 10 ? `The ${LAST_WORD} example shows friction in action.` : `Lecture sentence number ${i} about forces and motion today.`,
+      createdAt: new Date(start + Math.floor(i / 7) * 1000),     // seven captions per second: identical timestamps
+    }));
+    for (let i = 0; i < rows.length; i += 3000) await prisma.caption.createMany({ data: rows.slice(i, i + 3000) });
+  });
+
+  it('every caption is read exactly once, in order, through the database pager', { timeout: 240000 }, async () => {
+    let n = 0; let prev = null; let ids = new Set();
+    for await (const page of pageCaptions(prisma, room.id, { pageSize: 1000 })) {
+      for (const c of page) {
+        assert.ok(!ids.has(c.id), 'a caption was returned twice');
+        ids.add(c.id); n += 1;
+        if (prev) assert.ok(new Date(c.createdAt) >= new Date(prev.createdAt) && (+new Date(c.createdAt) > +new Date(prev.createdAt) || c.id > prev.id), 'order is (createdAt, id)');
+        prev = c;
+      }
+    }
+    assert.equal(n, TOTAL);
+  });
+
+  it('the transcript endpoint pages across groups of identical timestamps without skipping or repeating', { timeout: 240000 }, async () => {
+    const seen = new Set(); let cursor = ''; let pages = 0;
+    do {
+      const r = await api('GET', `/classrooms/${room.code}/transcript?limit=200${cursor ? `&cursor=${cursor}` : ''}`, { token: teacher.token });
+      assert.equal(r.status, 200);
+      r.json.data.captions.forEach((c) => { assert.ok(!seen.has(c.id)); seen.add(c.id); });
+      cursor = r.json.data.nextCursor; pages += 1;
+    } while (cursor && pages < 12);
+    assert.equal(seen.size, 200 * 12, 'twelve full pages, none overlapping, even though 200 is not a multiple of 7');
+  });
+
+  it('TXT and SRT exports contain every caption (no 20,000 cut-off)', { timeout: 240000 }, async () => {
+    const txt = await api('GET', `/classrooms/${room.code}/export?format=txt`, { token: teacher.token });
+    assert.equal(txt.status, 200);
+    assert.match(txt.text, new RegExp(`Captions: ${TOTAL}`));
+    assert.equal(txt.text.split('\n').filter((l) => /^\[\d/.test(l)).length, TOTAL);
+    assert.match(txt.text, new RegExp(LAST_WORD));
+    const srt = await api('GET', `/classrooms/${room.code}/export?format=srt`, { token: teacher.token });
+    assert.equal(srt.status, 200);
+    const cues = srt.text.trim().split('\n\n');
+    assert.equal(cues.length, TOTAL);
+    assert.ok(cues[TOTAL - 1].startsWith(`${TOTAL}\n`));
+  });
+
+  it('insights count every caption', { timeout: 240000 }, async () => {
+    const r = await api('GET', `/classrooms/${room.code}/insights`, { token: teacher.token });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.data.totalCaptions, TOTAL);
+    assert.equal(r.json.data.bySource.TEXT + r.json.data.bySource.SPEECH, TOTAL);
+  });
+
+  it('the summary covers the whole lecture and is honestly labelled when the AI is unavailable', { timeout: 240000 }, async () => {
+    const r = await api('POST', `/classrooms/${room.code}/summary`, { token: teacher.token });
+    assert.equal(r.status, 200);
+    const s = r.json.data.summary;
+    assert.equal(s.captionCount, TOTAL);
+    assert.equal(s.provider, 'basic');
+    assert.equal(s.coverage, 'fallback');
+    assert.match(s.fallbackReason, /not configured/i);
+    assert.ok(s.notes.length > 0);
+  });
+
+  it('a question about something said near the end is found, with a real timestamped reference', { timeout: 240000 }, async () => {
+    const r = await api('POST', `/classrooms/${room.code}/ask`, { token: teacher.token, body: { question: `What was the ${LAST_WORD} example?` } });
+    assert.equal(r.status, 200);
+    const a = r.json.data;
+    assert.equal(a.provider, 'search');
+    assert.ok(a.references.length >= 1);
+    const hit = a.references.find((x) => x.text.includes(LAST_WORD));
+    assert.ok(hit, 'the matching caption is referenced');
+    assert.match(hit.at, /^\d+:\d\d/);
+    const real = await prisma.caption.findUnique({ where: { id: hit.id } });
+    assert.equal(real.classroomId, room.id, 'the reference is a real caption of this class');
+    assert.equal(a.coverage.mode, 'searched');
+    assert.equal(a.coverage.totalCaptions, TOTAL);
+  });
+
+  it('a topic the lecture never mentions is reported as not covered', { timeout: 240000 }, async () => {
+    const r = await api('POST', `/classrooms/${room.code}/ask`, { token: teacher.token, body: { question: 'Explain photosynthesis chloroplasts' } });
+    assert.equal(r.json.data.covered, false);
+    assert.deepEqual(r.json.data.references, []);
+  });
+});

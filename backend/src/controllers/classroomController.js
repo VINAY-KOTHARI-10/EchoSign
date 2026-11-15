@@ -12,7 +12,11 @@ const { can } = require('../config/permissions');
 const audit = require('../Services/auditService');
 const codeGuess = require('../utils/codeGuess');
 const { summarizeLecture, askLecture } = require('../utils/lectureAi');
-const { toTxt, toSrt, toPrintHtml } = require('../utils/transcriptExport');
+const { createTranslator, validateInput } = require('../utils/translation');
+const { resolveLanguage } = require('../config/languages');
+const { pageCaptions } = require('../utils/captionPages');
+const { prismaSource } = require('../utils/lectureSource');
+const { streamTranscript } = require('../utils/transcriptStream');
 
 // No 0/O/1/I so codes are easy to read aloud.
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -73,22 +77,6 @@ const requireAccess = async (classroom, user) => {
   });
   if (!member) throw new AppError('Join this class with its code to see its captions.', 403, 'NOT_A_MEMBER');
   return role;
-};
-
-// Page through every caption (no arbitrary cap), for summaries and exports.
-const loadAllCaptions = async (classroomId, select, hardCap = 100000) => {
-  const out = [];
-  let cursor;
-  for (;;) {
-    const page = await prisma.caption.findMany({
-      where: { classroomId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 2000,
-      select: { id: true, ...select }, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    });
-    out.push(...page);
-    if (page.length < 2000 || out.length >= hardCap) break;
-    cursor = page[page.length - 1].id;
-  }
-  return out;
 };
 
 const cleanKeywords = (list) =>
@@ -295,27 +283,45 @@ const getTranscript = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// Writes a chunk and waits for the socket to drain, so a slow download never piles up in memory.
+const writeChunk = (res, chunk) => new Promise((resolve, reject) => {
+  if (res.destroyed) return reject(new Error('The download was cancelled'));
+  if (res.write(chunk)) return resolve();
+  res.once('drain', resolve);
+  res.once('close', () => reject(new Error('The download was cancelled')));
+  return undefined;
+});
+
 // GET /classrooms/:code/export?format=txt|srt|html
+// Streams the COMPLETE transcript page by page (bounded memory, no cap on length). If something fails after the download
+// has started the connection is dropped, so the person sees a failed download and not a file that looks complete.
 const exportTranscript = async (req, res, next) => {
   try {
     const classroom = await findByCode(req.params.code, req.user);
     await requireAccess(classroom, req.user);
-    const captions = await loadAllCaptions(classroom.id, { speakerName: true, text: true, source: true, createdAt: true });
     const format = String(req.query.format || 'txt').toLowerCase();
     const safeName = classroom.title.replace(/[^A-Za-z0-9 _-]/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || classroom.code;
     if (format === 'srt') {
       res.setHeader('Content-Type', 'application/x-subrip; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${safeName}.srt"`);
-      return res.send(toSrt(captions));
-    }
-    if (format === 'html' || format === 'print') {
+    } else if (format === 'html' || format === 'print') {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.send(toPrintHtml(classroom, captions, classroom.summary));
+    } else {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}.txt"`);
     }
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${safeName}.txt"`);
-    return res.send(toTxt(classroom, captions));
-  } catch (err) { next(err); }
+    res.setHeader('Cache-Control', 'no-store');
+
+    try {
+      const kind = format === 'srt' ? 'srt' : format === 'html' || format === 'print' ? 'html' : 'txt';
+      await streamTranscript({ prisma, classroom, kind, summary: classroom.summary, write: (chunk) => writeChunk(res, chunk) });
+      return res.end();
+    } catch (err) {
+      if (!res.headersSent) throw err;      // nothing sent yet: a normal error response
+      logger.error(`[${req.id}] transcript export interrupted: ${err.message}`);
+      return res.destroy(err);              // already streaming: abort so the file is not mistaken for a complete one
+    }
+  } catch (err) { return next(err); }
 };
 
 // PATCH /classrooms/:code/captions/:id   (host, captioner, or the person who spoke it)
@@ -371,58 +377,33 @@ const reopenClassroom = async (req, res, next) => {
 };
 
 // ── Translation ──────────────────────────────────────────────────────────────
-// Batched, cached and de-duplicated: the same caption is translated once even if many students ask at the same
-// moment. A caption the AI could not translate comes back as null (never cached), so the client can retry it.
-const translationCache = new Map(); // `${target}|${text}` -> translation
-const inflight = new Map();         // same key -> Promise<string|null> while a request is running
+// Batched, cached and de-duplicated (see utils/translation.js). A caption the AI could not translate comes back as null
+// and its index is listed in `failed`; it is never cached and never replaced by the original text.
 const translateLimiter = new RateLimiterMemory({ keyPrefix: 'translate', points: 40, duration: 60 });
 const askLimiter = new RateLimiterMemory({ keyPrefix: 'ask', points: 10, duration: 60 });
 const chatOrNull = () => (process.env.GROQ_API_KEY ? chatJSON : null);
-const tKey = (target, text) => `${target}|${text}`;
-
-const fetchTranslations = async (target, texts) => {
-  const ask = async () => chatJSON(
-    'You translate classroom captions. Reply ONLY with JSON: {"translations": ["..."]} — one string per input, same order, no commentary.',
-    `Translate each item into ${target}.\n${JSON.stringify(texts)}`,
-    { maxTokens: 1500 },
-  );
-  let result;
-  try { result = await ask(); } catch (err) { logger.warn(`Translation failed once, retrying: ${err.message}`); result = await ask(); }
-  if (!result) throw new AppError('Translation is not configured on this server', 503);
-  const list = Array.isArray(result.translations) ? result.translations : [];
-  return texts.map((_, i) => (typeof list[i] === 'string' && list[i].trim() ? list[i] : null));
-};
+const translator = createTranslator({
+  chat: (system, user, opts) => (process.env.GROQ_API_KEY ? chatJSON(system, user, opts) : Promise.resolve(null)),
+  logger,
+});
 
 // POST /classrooms/:code/translate  { texts: string[], target: 'Hindi' | 'hi' }
 const translate = async (req, res, next) => {
   try {
     const classroom = await findByCode(req.params.code, req.user);
     await requireAccess(classroom, req.user);
-    const target = String(req.body.target || '').trim().slice(0, 40);
-    const texts = (Array.isArray(req.body.texts) ? req.body.texts : []).slice(0, 20).map((t) => String(t).slice(0, 500));
-    if (!target || texts.length === 0) throw new AppError('target and texts are required', 400);
-    try { await translateLimiter.consume(req.user.id); } catch { throw new AppError('Too many translation requests, slow down', 429); }
+    let input;
+    try { input = validateInput({ texts: req.body.texts, target: req.body.target }, resolveLanguage); }
+    catch (err) { throw new AppError(err.message, err.status || 400, 'INVALID_TRANSLATION_REQUEST'); }
+    try { await translateLimiter.consume(req.user.id); } catch { throw new AppError('Too many translation requests, slow down', 429, 'RATE_LIMITED'); }
 
-    const unique = [...new Set(texts)];
-    const waiting = [];
-    const toFetch = [];
-    unique.forEach((t) => {
-      const key = tKey(target, t);
-      if (translationCache.has(key)) return;
-      if (inflight.has(key)) waiting.push(inflight.get(key)); else toFetch.push(t);
-    });
-    if (toFetch.length) {
-      const batch = fetchTranslations(target, toFetch);
-      toFetch.forEach((t, i) => inflight.set(tKey(target, t), batch.then((list) => list[i]).catch(() => null)));
-      try {
-        const list = await batch;
-        list.forEach((tr, i) => { if (tr) translationCache.set(tKey(target, toFetch[i]), tr); });
-        if (translationCache.size > 5000) translationCache.clear();
-      } finally { toFetch.forEach((t) => inflight.delete(tKey(target, t))); }
+    let result;
+    try { result = await translator.translate(input.language, input.texts); }
+    catch (err) {
+      if (err.code === 'NOT_CONFIGURED') throw new AppError('Translation is not configured on this server', 503, 'NOT_CONFIGURED');
+      throw new AppError('The translation service did not answer. Try again in a moment.', 502, 'TRANSLATION_FAILED');
     }
-    await Promise.all(waiting);
-    const out = texts.map((t) => translationCache.get(tKey(target, t)) ?? null);
-    res.json({ success: true, data: { translations: out, failed: out.map((v, i) => (v === null ? i : -1)).filter((i) => i >= 0) } });
+    res.json({ success: true, data: { translations: result.translations, failed: result.failed, target: input.language } });
   } catch (err) { next(err); }
 };
 
@@ -435,10 +416,14 @@ const generateSummary = async (req, res, next) => {
     const classroom = await findByCode(req.params.code, req.user);
     if (!canModerate(await roleOf(classroom, req.user))) throw new AppError('Only the host or a captioner can generate a summary', 403);
 
-    const captions = await loadAllCaptions(classroom.id, { speakerName: true, text: true, createdAt: true });
-    if (captions.length < 3) throw new AppError('Not enough captions to summarise yet', 400);
+    const count = await prisma.caption.count({ where: { classroomId: classroom.id } });
+    if (count < 3) throw new AppError('Not enough captions to summarise yet', 400);
 
-    const result = await summarizeLecture({ classroom, captions, chat: chatOrNull() });
+    // The transcript is read page by page and condensed as it arrives (see utils/lectureAi.js); nothing is held in full.
+    const result = await summarizeLecture({
+      classroom, chat: chatOrNull(),
+      pages: pageCaptions(prisma, classroom.id, { select: { speakerName: true, text: true }, pageSize: 1000 }),
+    });
     const stored = { ...result, model: result.provider === 'groq' ? MODEL : null, generatedAt: new Date().toISOString(), generatedBy: req.user.username };
     await prisma.classroom.update({ where: { id: classroom.id }, data: { summary: stored, summaryAt: new Date() } });
     res.json({ success: true, data: { summary: stored } });
@@ -472,9 +457,9 @@ const askAboutLecture = async (req, res, next) => {
     const question = String(req.body.question || '').replace(/\s+/g, ' ').trim().slice(0, 500);
     if (question.length < 3) throw new AppError('Type a question about the lecture', 400);
     try { await askLimiter.consume(req.user.id); } catch { throw new AppError('You are asking too fast. Wait a few seconds.', 429); }
-    const captions = await loadAllCaptions(classroom.id, { speakerName: true, text: true, createdAt: true }, 20000);
-    if (!captions.length) throw new AppError('This lecture has no captions yet', 400);
-    const answer = await askLecture({ classroom, captions, notes: classroom.summary, question, chat: chatOrNull() });
+    const source = prismaSource(prisma, classroom.id);
+    if ((await source.total()) === 0) throw new AppError('This lecture has no captions yet', 400);
+    const answer = await askLecture({ classroom, source, notes: classroom.summary, question, chat: chatOrNull() });
     res.json({ success: true, data: answer });
   } catch (err) { next(err); }
 };
@@ -488,33 +473,35 @@ const getInsights = async (req, res, next) => {
     const classroom = await findByCode(req.params.code, req.user);
     if (!canModerate(await roleOf(classroom, req.user))) throw new AppError('Only the host or a captioner can view insights', 403);
 
-    const [captions, members] = await Promise.all([
-      loadAllCaptions(classroom.id, { speakerId: true, speakerName: true, source: true, text: true, createdAt: true, editedAt: true }),
-      prisma.classroomMember.findMany({ where: { classroomId: classroom.id }, orderBy: { firstJoinedAt: 'asc' } }),
-    ]);
+    const members = await prisma.classroomMember.findMany({ where: { classroomId: classroom.id }, orderBy: { firstJoinedAt: 'asc' } });
 
+    // One pass over the transcript, a page at a time: only the running totals are kept.
     const bySource = { SPEECH: 0, SIGN: 0, TEXT: 0 };
     const speakers = {};
-    let corrected = 0;
-    captions.forEach((c) => {
-      bySource[c.source] = (bySource[c.source] || 0) + 1;
-      if (c.editedAt) corrected += 1;
-      const key = c.speakerId || c.speakerName;
-      const s = (speakers[key] ||= { userId: c.speakerId, username: c.speakerName, captions: 0, words: 0, speechWords: 0, bySource: { SPEECH: 0, SIGN: 0, TEXT: 0 } });
-      s.captions += 1; s.bySource[c.source] += 1;
-      const words = c.text.split(/\s+/).filter(Boolean).length;
-      s.words += words;
-      if (c.source === 'SPEECH') s.speechWords += words;
-    });
+    let corrected = 0; let totalCaptions = 0; let first = null; let last = null;
+    for await (const page of pageCaptions(prisma, classroom.id, { select: { speakerId: true, speakerName: true, source: true, text: true, editedAt: true }, pageSize: 2000 })) {
+      for (const c of page) {
+        totalCaptions += 1;
+        if (!first) first = c.createdAt;
+        last = c.createdAt;
+        bySource[c.source] = (bySource[c.source] || 0) + 1;
+        if (c.editedAt) corrected += 1;
+        const key = c.speakerId || c.speakerName;
+        const s = (speakers[key] ||= { userId: c.speakerId, username: c.speakerName, captions: 0, words: 0, speechWords: 0, bySource: { SPEECH: 0, SIGN: 0, TEXT: 0 } });
+        s.captions += 1; s.bySource[c.source] += 1;
+        const words = c.text.split(/\s+/).filter(Boolean).length;
+        s.words += words;
+        if (c.source === 'SPEECH') s.speechWords += words;
+      }
+    }
     const speakerList = Object.values(speakers)
       .map(({ speechWords, ...s }) => ({ ...s, estSpeakingMinutes: Math.round((speechWords / SPEAKING_WPM) * 10) / 10 }))
       .sort((a, b) => b.captions - a.captions);
 
-    const first = captions[0]?.createdAt; const last = captions[captions.length - 1]?.createdAt;
     res.json({
       success: true,
       data: {
-        totalCaptions: captions.length,
+        totalCaptions,
         corrected,
         bySource,
         speakers: speakerList,
