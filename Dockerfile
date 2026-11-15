@@ -30,6 +30,6 @@ RUN mkdir -p backend/logs && chown -R node:node /app
 USER node
 WORKDIR /app/backend
 EXPOSE 10000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 CMD curl -fsS http://localhost:${PORT}/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 CMD curl -fsS http://localhost:${PORT}/health/live || exit 1
 # Applies pending database migrations, then starts the server.
 CMD ["npm", "run", "start:migrate"]

@@ -15,9 +15,16 @@ if (!fs.existsSync(logsDir)) {
 
 const { combine, timestamp, printf, colorize, errors } = winston.format;
 
+// Secrets must never reach the logs: bearer tokens, JWTs, passwords, one-time codes and connection strings.
+const redact = (text) => String(text)
+  .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer [redacted]')
+  .replace(/eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*/g, '[jwt]')
+  .replace(/((?:password|passwd|otp|token|secret|api[_-]?key|authorization)["']?\s*[:=]\s*)["']?[^\s"',&}]+/gi, '$1[redacted]')
+  .replace(/(:\/\/[^:/\s]+:)[^@\s]+@/g, '$1[redacted]@');
+
 // Custom log format
 const logFormat = printf(({ level, message, timestamp, stack }) => {
-  return `${timestamp} [${level}]: ${stack || message}`;
+  return `${timestamp} [${level}]: ${redact(stack || message)}`;
 });
 
 const logger = winston.createLogger({
@@ -56,4 +63,5 @@ if (process.env.NODE_ENV === 'test') {
   logger.transports.forEach(t => { t.silent = true; });
 }
 
+logger.redact = redact;
 module.exports = logger;

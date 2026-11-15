@@ -8,6 +8,7 @@ const { prisma } = require('../config/postgres');
 const UserActivity = require('../models/mongo/UserActivity');
 const { AppError } = require('../middleware/errorMiddleware');
 const logger = require('../utils/logger');
+const { profileStats } = require('../utils/stats');
 
 /**
  * POST /api/v1/sessions
@@ -26,49 +27,35 @@ const createSession = async (req, res, next) => {
     } = req.body;
     const userId = req.user.id;
 
-    // Save to PostgreSQL (relational data)
-    const session = await prisma.practiceSession.create({
-      data: {
-        userId, language, duration, accuracy,
-        wordsAttempted, wordsCorrect, transcript, feedback,
-      },
-    });
-
-    // Update MongoDB activity (document data)
-    const activity = await UserActivity.findOne({ userId });
-    if (activity) {
-      activity.addSession({
-        sessionId: session.id,
-        language,
-        accuracy,
-        duration,
-        wordsAttempted,
-        wordsCorrect,
-        avgAccuracy: accuracy,
-        accuracyHistory: [accuracy],
+    // PostgreSQL is the source of truth: the session and the profile statistics are written together, and the
+    // statistics are recomputed from every session (not incremented), so a retry can never double count.
+    const session = await prisma.$transaction(async (tx) => {
+      const created = await tx.practiceSession.create({
+        data: { userId, language, duration, accuracy, wordsAttempted, wordsCorrect, transcript, feedback },
       });
-      await activity.save();
+      const agg = await tx.practiceSession.aggregate({
+        where: { userId }, _count: { _all: true }, _avg: { accuracy: true }, _sum: { duration: true },
+      });
+      await tx.userProfile.update({
+        where: { userId },
+        data: { ...profileStats({ count: agg._count._all, avgAccuracy: agg._avg.accuracy, sumDuration: agg._sum.duration }), lastActiveAt: new Date() },
+      });
+      return created;
+    });
+
+    // MongoDB activity feed is best effort. If it fails the session is still saved and scripts/maintenance.js repairs it.
+    try {
+      const activity = await UserActivity.findOne({ userId });
+      if (activity) {
+        activity.addSession({
+          sessionId: session.id, language, accuracy, duration, wordsAttempted, wordsCorrect,
+          avgAccuracy: accuracy, accuracyHistory: [accuracy],
+        });
+        await activity.save();
+      }
+    } catch (err) {
+      logger.warn(`Activity feed update failed for session ${session.id} (run maintenance reconcile): ${err.message}`);
     }
-
-    // Update profile stats in PostgreSQL
-    const allSessions = await prisma.practiceSession.findMany({
-      where: { userId },
-      select: { accuracy: true, duration: true },
-    });
-    const avgAccuracy = allSessions.reduce((s, x) => s + x.accuracy, 0) / allSessions.length;
-    const totalMinutes = Math.round(
-      allSessions.reduce((s, x) => s + x.duration, 0) / 60
-    );
-
-    await prisma.userProfile.update({
-      where: { userId },
-      data: {
-        totalSessions: allSessions.length,
-        totalMinutes,
-        avgAccuracy: Math.round(avgAccuracy * 100) / 100,
-        lastActiveAt: new Date(),
-      },
-    });
 
     // Emit real-time update
     const io = req.app.get('io');

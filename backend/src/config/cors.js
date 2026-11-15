@@ -7,8 +7,11 @@ const devOrigins = [3000, 3001, 5500, 5173, 8080].flatMap((p) => [
   `http://127.0.0.1:${p}`,
 ]);
 
+const originOf = (u) => { try { return new URL(u).origin; } catch { return null; } };
+
 const allowedOrigins = [
   ...devOrigins,
+  ...[originOf(process.env.FRONTEND_URL)].filter(Boolean),
   ...(process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
     : []),
@@ -25,4 +28,8 @@ const originCallback = (origin, callback) => {
   return callback(new Error(`CORS blocked: ${origin}`), false);
 };
 
-module.exports = { isAllowedOrigin, originCallback };
+// For Express: never throw (that became a 500). A disallowed origin simply gets no CORS headers, and csrfGuard
+// rejects its state-changing requests with 403. Socket.IO keeps the strict version above.
+const expressOriginCallback = (origin, callback) => callback(null, isAllowedOrigin(origin));
+
+module.exports = { isAllowedOrigin, originCallback, expressOriginCallback };

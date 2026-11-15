@@ -1,14 +1,18 @@
 // AppShell - scrolling sidebar, compact footer, admin nav
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { BarChart3, Bot, Captions, ChevronDown, Hand, History, LogOut, Menu, Mic, Shield, Sparkles, Trophy, User, Users, X } from 'lucide-react';
+import { BarChart3, Bot, Captions, ChevronDown, Download, Hand, History, LibraryBig, LogOut, Menu, Mic, Presentation, Shield, Sparkles, Trophy, User, Users, WifiOff, X } from 'lucide-react';
 import Logo from './Logo';
 import ThemeToggle from './ThemeToggle';
+import useOnline from '../hooks/useOnline';
+import usePwaInstall from '../hooks/usePwaInstall';
 import { useAuth } from '../context/AuthContext';
 import { roleLabel } from '../lib';
 
+// Everyone sees these. Teachers and admins also get the Teacher dashboard (see AppShell below).
 const links = [
   { to: '/classroom', label: 'Classroom', icon: Captions },
+  { to: '/library', label: 'My lectures', icon: LibraryBig },
   { to: '/signs', label: 'Sign Lab', icon: Hand },
   { to: '/dashboard', label: 'Practice', icon: Mic },
   { to: '/conversation', label: 'AI Partner', icon: Bot },
@@ -20,6 +24,12 @@ const links = [
 ];
 
 
+function InstallButton() {
+  const { canInstall, install } = usePwaInstall();
+  if (!canInstall) return null;
+  return <button type="button" className="btn btn-outline btn-sm btn-block" style={{ margin: '0 0 10px' }} onClick={install}><Download size={15} aria-hidden="true" /> Install EchoSign</button>;
+}
+
 export function SidebarFooter({ onLogout }) {
   const { user } = useAuth();
   return (
@@ -28,7 +38,7 @@ export function SidebarFooter({ onLogout }) {
         <div className="avatar" aria-hidden="true">{(user?.username || 'U')[0].toUpperCase()}</div>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.username}</div>
-          <div className="muted" style={{ fontSize: 12 }}>{roleLabel(user?.role)}</div>
+          <span className={`role-badge role-${(user?.role || 'USER').toLowerCase()}`}>{roleLabel(user?.role)}</span>
         </div>
         <ChevronDown size={16} aria-hidden="true" style={{ marginLeft: 'auto', color: 'var(--muted)' }} />
       </div>
@@ -59,6 +69,7 @@ export function Frame({ brandTo, badge, nav, extra, promo, subtitle, adminClass,
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
+  const online = useOnline();
   return (
     <div className={`shell ${adminClass || ''}`}>
       <a className="skip-link" href="#main">Skip to main content</a>
@@ -80,20 +91,26 @@ export function Frame({ brandTo, badge, nav, extra, promo, subtitle, adminClass,
           {extra}
         </nav>
         {promo}
+        <InstallButton />
         <SidebarFooter onLogout={onLogout} />
       </aside>
       {open && <button className="drawer-scrim" aria-label="Close menu" onClick={() => setOpen(false)} />}
-      <main id="main" ref={main} tabIndex={-1} className="main">{children}</main>
+      <main id="main" ref={main} tabIndex={-1} className="main">
+        {!online && <p className="conn-banner" role="status"><WifiOff size={18} aria-hidden="true" /> You are offline. Live classes need a connection; saved lecture notes are in <Link to="/library" className="link">My lectures</Link>.</p>}
+        {children}
+      </main>
     </div>
   );
 }
 
 export default function AppShell() {
-  const { isAdmin, logout } = useAuth();
+  const { isAdmin, can, logout } = useAuth();
   const navigate = useNavigate();
+  // The menu follows the account's permissions: teachers get a dashboard, students do not.
+  const nav = can('analytics.class') ? [links[0], { to: '/teacher', label: 'Teacher dashboard', icon: Presentation }, ...links.slice(1)] : links;
   return (
     <Frame
-      brandTo="/classroom" nav={links} subtitle="Accessible Classroom Assistant"
+      brandTo="/classroom" nav={nav} subtitle="Accessible Classroom Assistant"
       promo={(
         <Link to="/signs" className="promo">
           <b>Make learning inclusive for all</b>

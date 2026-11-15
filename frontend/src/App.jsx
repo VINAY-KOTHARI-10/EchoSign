@@ -2,7 +2,7 @@
 import { Suspense, lazy } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
-import { RequireAuth, RequireAdmin, GuestOnly } from './components/Guards';
+import { RequireAuth, RequireAdmin, RequirePermission, GuestOnly } from './components/Guards';
 import AppShell from './components/AppShell';
 import AdminShell from './components/AdminShell';
 import Landing from './pages/Landing';
@@ -27,6 +27,11 @@ const ClassroomRoom = lazy(() => import('./pages/ClassroomRoom'));
 const Signs = lazy(() => import('./pages/Signs'));
 
 const Progress = lazy(() => import('./pages/Progress'));
+const Library = lazy(() => import('./pages/Library'));
+const LectureNotes = lazy(() => import('./pages/LectureNotes'));
+const TeacherDashboard = lazy(() => import('./pages/TeacherDashboard'));
+const Access = lazy(() => import('./pages/Access'));
+const AdminAudit = lazy(() => import('./pages/admin/Audit'));
 
 export default function App() {
   const { loading } = useAuth();
@@ -55,6 +60,12 @@ export default function App() {
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/community" element={<Community />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/library" element={<Library />} />
+          <Route path="/library/:code" element={<LectureNotes />} />
+          <Route path="/access" element={<Access />} />
+          <Route element={<RequirePermission permission="analytics.class" need="Teacher" />}>
+            <Route path="/teacher" element={<TeacherDashboard />} />
+          </Route>
         </Route>
       </Route>
 
@@ -65,6 +76,7 @@ export default function App() {
           <Route path="/admin/sessions" element={<AdminSessions />} />
           <Route path="/admin/classrooms" element={<AdminClassrooms />} />
           <Route path="/admin/languages" element={<AdminLanguages />} />
+          <Route path="/admin/audit" element={<AdminAudit />} />
         </Route>
       </Route>
 

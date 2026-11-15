@@ -12,6 +12,11 @@ import './styles/pages.css';
 import './styles/theme.css';
 import './styles/premium.css';
 
+// Offline support: the service worker keeps the app shell and saved lecture notes (never live classroom data).
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => { /* optional feature */ }); });
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>

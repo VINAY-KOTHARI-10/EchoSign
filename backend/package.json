@@ -14,7 +14,10 @@
     "make-admin": "node scripts/make-admin.js",
     "set-role": "node scripts/set-role.js",
     "postinstall": "npx prisma generate",
-    "start:migrate": "prisma migrate deploy && node src/server.js"
+    "start:migrate": "prisma migrate deploy && node src/server.js",
+    "e2e": "node scripts/run-e2e.js",
+    "test:migrations": "node scripts/test-migrations.js",
+    "maintenance": "node scripts/maintenance.js"
   },
   "engines": {
     "node": ">=18.0.0",
@@ -50,6 +53,7 @@
   "devDependencies": {
     "jest": "^29.7.0",
     "nodemon": "^3.1.0",
+    "socket.io-client": "^4.8.4",
     "supertest": "^6.3.4"
   }
 }

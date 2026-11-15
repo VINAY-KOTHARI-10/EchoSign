@@ -2,20 +2,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, Bell, BookOpen, CalendarClock, Captions, Copy, Download, FileText, Hand, HelpCircle, Maximize2,
-  Mic, MicOff, Pause, Play, RefreshCw, Settings, Share2, Sparkles, Square, Users,
+  MessageCircleQuestion, Mic, MicOff, Pause, Play, RefreshCw, Settings, Share2, Sparkles, Square, Users, WifiOff,
 } from 'lucide-react';
 import * as api from '../api';
 import { LANGS, langBcp, langName } from '../lib';
-import { alertReason, buildTranscriptText, downloadText, safeName } from '../lib/captions';
+import { alertReason } from '../lib/captions';
 import useCaptionRoom from '../hooks/useCaptionRoom';
 import useDisplayPrefs, { FONTS, THEMES } from '../hooks/useDisplayPrefs';
 import usePacedCaptions from '../hooks/usePacedCaptions';
 import useRecorder from '../hooks/useRecorder';
 import useSignRecognition from '../hooks/useSignRecognition';
-import useSpeech from '../hooks/useSpeech';
+import useSpeech, { SPEECH_PRIVACY } from '../hooks/useSpeech';
 import useTranslation, { translationKey } from '../hooks/useTranslation';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useUiPrefs } from '../hooks/useUiPrefs';
+import AskPanel from '../components/classroom/AskPanel';
 import CaptionStage from '../components/classroom/CaptionStage';
 import DisplayPanel from '../components/classroom/DisplayPanel';
 import HandPanel from '../components/classroom/HandPanel';
@@ -49,16 +51,19 @@ export default function ClassroomRoom() {
   const [paused, setPaused] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const resumeRef = useRef({ mic: false, cam: false });
+  const { ui } = useUiPrefs();
+  const [announcement, setAnnouncement] = useState(''); // read out by screen readers when the preference is on
 
   // ── Alerts: flash / vibrate when something addressed to me is captioned ──
   const onIncoming = useCallback((cap) => {
     if (cap.speakerId === user.id) return;
+    if (ui.announceCaptions) setAnnouncement(`${cap.speakerName}: ${cap.text}`);
     const words = prefs.alerts.words.split(',').map((w) => w.trim()).filter(Boolean);
     const reason = alertReason(cap.text, { username: prefs.alerts.name ? user.username : '', words, question: prefs.alerts.question });
     if (!reason) return;
     setAlertInfo({ reason, text: cap.text, who: cap.speakerName, at: Date.now() });
     if (prefs.alerts.vibrate && navigator.vibrate) navigator.vibrate([200, 100, 200]);
-  }, [prefs.alerts, user.id, user.username]);
+  }, [prefs.alerts, user.id, user.username, ui.announceCaptions]);
   useEffect(() => {
     if (!alertInfo) return undefined;
     const t = setTimeout(() => setAlertInfo(null), 4000);
@@ -145,6 +150,16 @@ export default function ClassroomRoom() {
     catch (err) { toast(err.message, 'error'); }
   };
 
+  const downloadTranscript = async () => {
+    try {
+      const { blob, filename } = await api.classrooms.exportFile(code, 'txt');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (err) { toast(err.message, 'error'); }
+  };
+
   const onEdit = async (id, text) => {
     const res = await api.classrooms.editCaption(code, id, text);
     rm.replaceCaption(res.data.caption);
@@ -163,6 +178,7 @@ export default function ClassroomRoom() {
     { id: 'live', label: 'Live Caption', icon: Captions },
     { id: 'transcript', label: 'Transcript', icon: FileText },
     { id: 'summary', label: 'Summary', icon: Sparkles },
+    { id: 'ask', label: 'Ask', icon: MessageCircleQuestion },
     ...(meta.canModerate ? [{ id: 'students', label: `Students (${studentCount})`, icon: Users }] : []),
     ...(meta.isHost ? [{ id: 'settings', label: 'Settings', icon: Settings }] : []),
   ], [meta.canModerate, meta.isHost, studentCount]);
@@ -228,7 +244,7 @@ export default function ClassroomRoom() {
         </div>
         <div className="room-actions">
           <span className={`pill-live ${live ? '' : 'off'}`} role="status">
-            {live ? <><span className="pulse-dot" aria-hidden="true" /> Live Class</> : ended ? 'Class ended' : 'Connecting…'}
+            {live ? <><span className="pulse-dot" aria-hidden="true" /> Live Class</> : ended ? 'Class ended' : rm.connection === 'offline' ? 'Offline' : rm.connection === 'reconnecting' ? 'Reconnecting…' : 'Connecting…'}
           </span>
           {meta.role === 'CAPTIONER' && <StatusBadge status="ok">Captioner</StatusBadge>}
           <button className="icon-btn" onClick={showHands} aria-label={rm.hands.length ? `${rm.hands.length} raised ${rm.hands.length === 1 ? 'hand' : 'hands'}. Show` : 'No raised hands'}>
@@ -240,6 +256,17 @@ export default function ClassroomRoom() {
             : <button className="btn btn-outline btn-lg" onClick={() => navigate('/classroom')}>{ended ? 'Close' : 'Leave class'}</button>}
         </div>
       </header>
+
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>
+      {!ended && rm.connection !== 'online' && (
+        <div className="conn-banner" role="status">
+          <WifiOff size={18} aria-hidden="true" />
+          <span>{rm.connection === 'offline' ? 'You are offline. Captions you send are kept and will be sent when you reconnect.'
+            : rm.connection === 'reconnecting' ? 'Reconnecting to the class. Captions you send are kept and retried.' : 'Connecting to the class…'}
+            {rm.pending > 0 ? ` (${rm.pending} waiting to send)` : ''}</span>
+        </div>
+      )}
+      {!ended && rm.connection === 'online' && rm.pending > 0 && <div className="conn-banner info" role="status">Sending {rm.pending} {rm.pending === 1 ? 'caption' : 'captions'}…</div>}
 
       <Tabs variant="pill" tabs={tabs} value={tab} onChange={setTab} label="Classroom sections" idPrefix="room" />
 
@@ -304,8 +331,12 @@ export default function ClassroomRoom() {
               ) : null)}
               {!ended && <button className="btn btn-outline" disabled={!live || !speech.supported} onClick={restart}><RefreshCw size={18} aria-hidden="true" /> Restart</button>}
               <button className="btn btn-outline" onClick={() => copy(`${window.location.origin}/classroom/${room.code}`, 'Join link copied')}><Share2 size={18} aria-hidden="true" /> Share</button>
-              <button className="btn btn-outline" disabled={!captions.length} onClick={() => downloadText(`${safeName(`${room.title}-${room.code}`)}.txt`, buildTranscriptText(room, captions))}><Download size={18} aria-hidden="true" /> Download Transcript</button>
+              <button className="btn btn-outline" disabled={!captions.length} onClick={downloadTranscript}><Download size={18} aria-hidden="true" /> Download Transcript</button>
             </div>
+
+            <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
+              {speech.supported ? SPEECH_PRIVACY : 'This browser cannot turn speech into text. Type captions below, use sign recognition, or open EchoSign in Chrome or Edge.'}
+            </p>
 
             {/* ── Feature tiles ─────────────────────────────── */}
             <ul className="feature-tiles plain-grid" aria-label="Class features">
@@ -340,10 +371,13 @@ export default function ClassroomRoom() {
       </TabPanel>
 
       <TabPanel id="transcript" active={tab === 'transcript'} idPrefix="room">
-        <TranscriptPanel room={room} captions={captions} onJump={jumpTo} canRecord={meta.canModerate} recorder={recorder} />
+        <TranscriptPanel room={room} liveCaptions={captions} onJump={jumpTo} canRecord={meta.canModerate} recorder={recorder} />
       </TabPanel>
       <TabPanel id="summary" active={tab === 'summary'} idPrefix="room">
         <SummaryPanel room={room} setRoom={rm.setRoom} canModerate={meta.canModerate} captionCount={captions.length} />
+      </TabPanel>
+      <TabPanel id="ask" active={tab === 'ask'} idPrefix="room">
+        <AskPanel room={room} captionCount={captions.length} onJump={jumpTo} />
       </TabPanel>
       <TabPanel id="students" active={tab === 'students' && meta.canModerate} idPrefix="room">
         <InsightsPanel room={room} isHost={meta.isHost} active={live} />

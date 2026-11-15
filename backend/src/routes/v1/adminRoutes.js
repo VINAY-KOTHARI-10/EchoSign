@@ -1,12 +1,18 @@
 // src/routes/v1/adminRoutes.js
 'use strict';
 const { Router } = require('express');
-const { authenticate, authorize } = require('../../middleware/authMiddleware');
+const { authenticate, requirePermission } = require('../../middleware/authMiddleware');
+const audit = require('../../Services/auditService');
+const { getOnlineCount } = require('../../sockets/socketManager');
+const AuthSession = require('../../models/mongo/AuthSession');
+const OtpRecord = require('../../models/mongo/OtpRecord');
+const logger = require('../../utils/logger');
+const { MODEL } = require('../../utils/groq');
 const { prisma } = require('../../config/postgres');
 const UserActivity = require('../../models/mongo/UserActivity');
 
 const router = Router();
-router.use(authenticate, authorize('ADMIN'));
+router.use(authenticate, requirePermission('admin.panel'));
 
 // Hierarchy: ADMIN > TEACHER > USER (member). MODERATOR is legacy and kept only so old accounts still work.
 const ROLES = ['USER', 'TEACHER', 'ADMIN', 'MODERATOR'];
@@ -60,11 +66,17 @@ router.patch('/users/:id/role', async (req, res, next) => {
     if (req.params.id === req.user.id && role !== 'ADMIN') {
       return res.status(400).json({ success: false, error: 'You cannot remove your own admin role' });
     }
+    const before = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true, role: true, email: true } });
+    if (!before) return res.status(404).json({ success: false, error: 'User not found' });
+    if (before.role === 'ADMIN' && role !== 'ADMIN' && (await prisma.user.count({ where: { role: 'ADMIN' } })) <= 1) {
+      return res.status(400).json({ success: false, error: 'There must always be at least one admin' });
+    }
     const user = await prisma.user.update({
       where: { id: req.params.id },
       data: { role },
       select: { id: true, email: true, role: true },
     });
+    audit.record({ actor: req.user, action: 'user.role_change', targetType: 'user', targetId: user.id, meta: { email: user.email, from: before.role, to: role }, ip: req.ip });
     res.json({ success: true, data: { user } });
   } catch (err) { next(err); }
 });
@@ -75,7 +87,27 @@ router.delete('/users/:id', async (req, res, next) => {
     if (req.params.id === req.user.id) {
       return res.status(400).json({ success: false, error: 'You cannot delete your own account' });
     }
-    await prisma.user.delete({ where: { id: req.params.id } });
+    const target = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, email: true, role: true, _count: { select: { hostedClassrooms: true } } },
+    });
+    if (!target) return res.status(404).json({ success: false, error: 'User not found' });
+    if (target.role === 'ADMIN' && (await prisma.user.count({ where: { role: 'ADMIN' } })) <= 1) {
+      return res.status(400).json({ success: false, error: 'There must always be at least one admin' });
+    }
+    // Deleting a teacher also deletes their classes and every caption in them, so make the admin confirm that.
+    if (target._count.hostedClassrooms > 0 && req.query.confirm !== 'true') {
+      return res.status(409).json({
+        success: false, code: 'CONFIRM_REQUIRED', hostedClassrooms: target._count.hostedClassrooms,
+        error: `This user hosts ${target._count.hostedClassrooms} class(es). Deleting them also deletes those classes and their transcripts.`,
+      });
+    }
+    await prisma.user.delete({ where: { id: target.id } });
+    // Remove the user's MongoDB data too, so nothing personal is left behind.
+    await Promise.all([
+      AuthSession.deleteAllForUser(target.id), OtpRecord.deleteMany({ userId: target.id }), UserActivity.deleteMany({ userId: target.id }),
+    ]).catch((err) => logger.warn(`Mongo cleanup after deleting ${target.id} failed: ${err.message}`));
+    audit.record({ actor: req.user, action: 'user.delete', targetType: 'user', targetId: target.id, meta: { email: target.email, hostedClassrooms: target._count.hostedClassrooms }, ip: req.ip });
     res.json({ success: true, message: 'User deleted' });
   } catch (err) { next(err); }
 });
@@ -146,7 +178,7 @@ router.get('/stats', async (req, res, next) => {
     const [
       userCount, adminCount, teacherCount, newUsersWeek, sessionCount, sessionsToday,
       languageCount, avg, recentUsers, byLanguage, topActivity,
-      classroomCount, activeClassrooms, captionCount,
+      classroomCount, activeClassrooms, captionCount, studentCount, activeUsers7d, completedClassrooms,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { role: 'ADMIN' } }),
@@ -165,18 +197,35 @@ router.get('/stats', async (req, res, next) => {
       prisma.classroom.count(),
       prisma.classroom.count({ where: { active: true } }),
       prisma.caption.count(),
+      prisma.user.count({ where: { role: { in: ['USER', 'MODERATOR'] } } }),
+      prisma.userProfile.count({ where: { lastActiveAt: { gte: weekAgo } } }),
+      prisma.classroom.count({ where: { active: false, endedAt: { not: null } } }),
     ]);
     res.json({
       success: true,
       data: {
         userCount, adminCount, teacherCount, newUsersWeek, sessionCount, sessionsToday, languageCount,
-        classroomCount, activeClassrooms, captionCount,
+        classroomCount, activeClassrooms, captionCount, studentCount, activeUsers7d, completedClassrooms,
+        onlineNow: getOnlineCount(),
+        services: {
+          ai: { configured: Boolean(process.env.GROQ_API_KEY), model: process.env.GROQ_API_KEY ? MODEL : null },
+          email: { configured: Boolean(process.env.BREVO_API_KEY && process.env.EMAIL_FROM) },
+          googleSignIn: { configured: Boolean(process.env.GOOGLE_CLIENT_ID) },
+        },
         avgAccuracy: Math.round((avg._avg.accuracy || 0) * 10) / 10,
         recentUsers,
         sessionsByLanguage: byLanguage.map((r) => ({ language: r.language, count: r._count._all })),
         topActivity,
       },
     });
+  } catch (err) { next(err); }
+});
+
+// GET /api/v1/admin/audit?page&action
+router.get('/audit', requirePermission('audit.view'), async (req, res, next) => {
+  try {
+    const data = await audit.list({ page: Math.max(1, parseInt(req.query.page, 10) || 1), limit: 30, action: req.query.action ? String(req.query.action) : undefined });
+    res.json({ success: true, data });
   } catch (err) { next(err); }
 });
 
@@ -209,6 +258,7 @@ router.patch('/languages/:id', async (req, res, next) => {
 router.delete('/languages/:id', async (req, res, next) => {
   try {
     await prisma.language.delete({ where: { id: req.params.id } });
+    audit.record({ actor: req.user, action: 'language.delete', targetType: 'language', targetId: req.params.id, ip: req.ip });
     res.json({ success: true, message: 'Language deleted' });
   } catch (err) { next(err); }
 });

@@ -26,6 +26,13 @@ export function buildSrt(captions, originMs) {
   return rows.join('\n');
 }
 
+// "12:30" or "1:02:03" -> seconds, or null when it is not a time
+export const parseClock = (v) => {
+  const m = String(v).trim().match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  return (Number(m[1] || 0) * 3600) + (Number(m[2]) * 60) + Number(m[3]);
+};
+
 export const timeOf = (d) => new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 export const buildTranscriptText = (room, captions) =>

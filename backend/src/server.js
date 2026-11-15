@@ -16,6 +16,7 @@ const { initSocket } = require('./sockets/socketManager');
 const { connectMongoDB } = require('./config/mongodb');
 const { connectPostgres } = require('./config/postgres');
 const logger = require('./utils/logger');
+const { validateEnv } = require('./config/env');
 
 // ─── Server EventEmitter (local module pattern) ───────────────────────────────
 class ServerEvents extends EventEmitter {
@@ -36,6 +37,8 @@ app.set('io', io); // Make io accessible in routes
 // ─── Bootstrap function ───────────────────────────────────────────────────────
 async function bootstrap() {
   try {
+    validateEnv(process.env, logger);
+
     // Connect databases
     await connectMongoDB();
     serverEvents.emit('db:mongo:connected');
@@ -64,11 +67,20 @@ serverEvents.on('db:postgres:connected', () => logger.info('✅ PostgreSQL conne
 serverEvents.on('server:ready', (port) => logger.info(`✅ Server ready on ${port}`));
 
 // ─── Graceful Shutdown ────────────────────────────────────────────────────────
+let shuttingDown = false;
 const shutdown = (signal) => {
-  logger.info(`\n${signal} received. Graceful shutdown initiated...`);
-  server.close(() => {
-    logger.info('HTTP server closed');
-    process.exit(0);
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info(`${signal} received. Graceful shutdown initiated...`);
+  // Hard stop if something hangs, so the platform can replace the instance.
+  setTimeout(() => { logger.error('Shutdown timed out, forcing exit'); process.exit(1); }, 10000).unref();
+  io.close(() => {
+    server.close(async () => {
+      try { await require('./config/postgres').prisma.$disconnect(); } catch (e) { logger.warn(`Postgres disconnect: ${e.message}`); }
+      try { await require('mongoose').disconnect(); } catch (e) { logger.warn(`Mongo disconnect: ${e.message}`); }
+      logger.info('Shutdown complete');
+      process.exit(0);
+    });
   });
 };
 

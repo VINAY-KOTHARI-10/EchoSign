@@ -104,10 +104,14 @@ const errorHandler = (err, req, res, next) => {
     logger.warn(`[${req.id}] ${statusCode}: ${message}`);
   }
 
+  // Never leak internals (database messages, stack text) for unexpected server errors.
+  if (statusCode >= 500 && !err.isOperational) message = 'Something went wrong on our side. Please try again.';
+
   const response = {
     success: false,
     error: message,
     code,
+    requestId: req.id,
   };
 
   // Include stack trace in development

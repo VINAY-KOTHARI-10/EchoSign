@@ -45,7 +45,16 @@ export default function Users() {
     const ok = await confirm({ title: `Delete ${u.username}?`, body: 'Their sessions, messages and hosted classes are removed permanently. This cannot be undone.', confirmLabel: 'Delete user', danger: true });
     if (!ok) return;
     try { await api.admin.deleteUser(u.id); toast('User deleted', 'success'); load(); }
-    catch (err) { toast(err.message, 'error'); }
+    catch (err) {
+      if (err.status === 409) {
+        // Teachers who host classes: deleting them also deletes those classes and transcripts, so ask again, explicitly.
+        const sure = await confirm({ title: `Delete ${u.username} and their classes?`, body: err.message, confirmLabel: 'Delete everything', danger: true });
+        if (!sure) return;
+        try { await api.admin.deleteUser(u.id, true); toast('User and their classes deleted', 'success'); load(); } catch (e2) { toast(e2.message, 'error'); }
+        return;
+      }
+      toast(err.message, 'error');
+    }
   };
 
   const filtered = Boolean(query || role);

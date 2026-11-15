@@ -156,12 +156,13 @@ const register = async (req, res, next) => {
       ttlMinutes: 5,
     });
 
-    // Send OTP email — non-blocking
-    EmailService.sendLoginOtp(user.email, { otp, expiryMinutes: 5 }).catch(err =>
-      logger.error(`[OTP] Email send failed for ${user.email}: ${err.message}`)
-    );
+    // The code email decides whether the user can continue, so wait for it and report honestly.
+    let emailSent = true;
+    try { await EmailService.sendLoginOtp(user.email, { otp, expiryMinutes: 5 }); }
+    catch (err) { emailSent = false; logger.error(`[OTP] Email send failed for ${user.email}: ${err.message}`); }
 
-    // Send welcome email (non-blocking)
+    // Welcome email is a courtesy: non-blocking
+
     const dashboardUrl = `${FRONTEND_URL}/classroom`;
     EmailService.sendWelcome(email, {
       username,
@@ -176,6 +177,8 @@ const register = async (req, res, next) => {
       requiresOtp: true,
       preAuthToken,
       maskedEmail: maskEmail(user.email),
+      emailSent,
+      ...(emailSent ? {} : { message: 'Your account was created, but we could not email the code. Use "Resend code" in a moment.' }),
     });
 
   } catch (err) {
@@ -223,10 +226,9 @@ const login = async (req, res, next) => {
         ttlMinutes: 5,
       });
 
-      // Send OTP email — non-blocking
-      EmailService.sendLoginOtp(user.email, { otp, expiryMinutes: 5 }).catch(err =>
-        logger.error(`[OTP] Email send failed for ${user.email}: ${err.message}`)
-      );
+      let emailSent = true;
+      try { await EmailService.sendLoginOtp(user.email, { otp, expiryMinutes: 5 }); }
+      catch (err) { emailSent = false; logger.error(`[OTP] Email send failed for ${user.email}: ${err.message}`); }
 
       // Issue pre-auth token (short-lived, purpose: 'otp' — cannot access protected routes)
       const preAuthToken = signPreAuthToken({ userId: user.id, email: user.email });
@@ -236,7 +238,8 @@ const login = async (req, res, next) => {
         requiresOtp: true,
         preAuthToken,
         maskedEmail: maskEmail(user.email),
-        message: "Email not verified. OTP sent to verify your account."
+        emailSent,
+        message: emailSent ? 'Email not verified. We sent you a code to verify your account.' : 'Email not verified, and we could not email the code. Use "Resend code" in a moment.',
       });
     }
 
@@ -413,10 +416,12 @@ const resendOtp = async (req, res, next) => {
       ttlMinutes: 5,
     });
 
-    // 4. Send the new OTP email (non-blocking)
-    EmailService.sendLoginOtp(email, { otp, expiryMinutes: 5 }).catch(err =>
-      logger.error(`[OTP] Resend email failed for ${email}: ${err.message}`)
-    );
+    // 4. Send the new OTP email. A failure is reported, never shown as success.
+    try { await EmailService.sendLoginOtp(email, { otp, expiryMinutes: 5 }); }
+    catch (err) {
+      logger.error(`[OTP] Resend email failed for ${email}: ${err.message}`);
+      throw new AppError('We could not send the email right now. Please try again in a minute.', 502, 'EMAIL_FAILED');
+    }
 
     // Reload to get updated resendCount for the response
     const updated = await OtpRecord.findOne({ userId });
@@ -443,8 +448,10 @@ const refreshToken = async (req, res, next) => {
     const token = req.cookies?.refreshToken || req.body?.refreshToken;
     if (!token) throw new AppError('No refresh token', 401, 'NO_REFRESH_TOKEN');
 
-    // verify refresh token exists and not revoked
-    const decoded = await verifyRefreshToken(token);
+    // verify refresh token exists and not revoked (any failure here means "log in again", never a server error)
+    let decoded;
+    try { decoded = await verifyRefreshToken(token); }
+    catch (err) { throw new AppError('Session expired. Please log in again.', 401, 'INVALID_REFRESH'); }
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
@@ -571,11 +578,12 @@ const requestPasswordReset = async (req, res, next) => {
     // Send email
     const resetUrl = `${FRONTEND_URL}/reset-password/${resetToken}`;
 
-    await EmailService.sendPasswordReset(user.email, {
-      username: user.username,
-      resetUrl,
-      expiresIn: '1 hour'
-    });
+    // Same reply either way (so the response never reveals whether the email exists); the failure is logged.
+    try {
+      await EmailService.sendPasswordReset(user.email, { username: user.username, resetUrl, expiresIn: '1 hour' });
+    } catch (err) {
+      logger.error(`[Reset] could not email a reset link to user ${user.id}: ${err.message}`);
+    }
 
     res.json({ success: true, message: successMsg });
   } catch (err) {

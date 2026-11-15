@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Activity, Captions, Globe, LayoutDashboard, Mic, ShieldCheck, Target, UserPlus, Users } from 'lucide-react';
+import { Activity, Captions, Globe, LayoutDashboard, Mic, Radio, ShieldCheck, Target, UserPlus, Users } from 'lucide-react';
 import * as api from '../../api';
 import { formatDate, langName } from '../../lib';
 import { EmptyState, ErrorState, LoadingState, PageHeader, StatusBadge } from '../../components/ui';
@@ -16,9 +16,13 @@ export default function Overview() {
 
   const cards = [
     { icon: Users, label: 'Total users', value: s.userCount, bg: 'var(--violet-light)', color: 'var(--violet-dark)' },
+    { icon: Users, label: 'Students', value: s.studentCount ?? 0, bg: 'var(--mint)', color: 'var(--go)' },
     { icon: Users, label: 'Teachers', value: s.teacherCount ?? 0, bg: 'var(--mint)', color: 'var(--go)' },
+    { icon: Radio, label: 'Online now', value: s.onlineNow ?? 0, bg: 'var(--peach)', color: '#9a3412' },
+    { icon: Activity, label: 'Active this week', value: s.activeUsers7d ?? 0, bg: 'var(--violet-light)', color: 'var(--violet-dark)' },
     { icon: UserPlus, label: 'New this week', value: s.newUsersWeek, bg: 'var(--mint)', color: 'var(--go)' },
     { icon: Captions, label: 'Live classes', value: `${s.activeClassrooms} of ${s.classroomCount}`, bg: 'var(--peach)', color: '#9a3412' },
+    { icon: Captions, label: 'Completed classes', value: s.completedClassrooms ?? 0, bg: 'var(--mint)', color: 'var(--go)' },
     { icon: Mic, label: 'Practice sessions', value: s.sessionCount, bg: '#fef3c7', color: '#8a4a05' },
     { icon: Activity, label: 'Sessions (24h)', value: s.sessionsToday, bg: 'var(--violet-light)', color: 'var(--violet-dark)' },
     { icon: Target, label: 'Average accuracy', value: `${s.avgAccuracy}%`, bg: 'var(--mint)', color: 'var(--go)' },
@@ -40,6 +44,18 @@ export default function Overview() {
           </li>
         ))}
       </ul>
+
+      {s.services && (
+        <section className="card" aria-labelledby="svc-h" style={{ marginBottom: 'var(--gap)' }}>
+          <h2 id="svc-h" className="card-title">Services</h2>
+          <p className="muted" style={{ fontSize: 13, marginBottom: 10 }}>Whether each outside service is configured on this server (not whether it is up right now).</p>
+          <ul className="pill-group plain-grid" style={{ display: 'flex' }}>
+            <li><StatusBadge status={s.services.ai.configured ? 'ok' : 'warn'}>AI notes and Q&A: {s.services.ai.configured ? `on (${s.services.ai.model})` : 'not configured, using basic fallbacks'}</StatusBadge></li>
+            <li><StatusBadge status={s.services.email.configured ? 'ok' : 'warn'}>Login-code email: {s.services.email.configured ? 'configured' : 'NOT configured, nobody can verify an account'}</StatusBadge></li>
+            <li><StatusBadge status={s.services.googleSignIn.configured ? 'ok' : 'off'}>Google sign-in: {s.services.googleSignIn.configured ? 'on' : 'off'}</StatusBadge></li>
+          </ul>
+        </section>
+      )}
 
       <div className="grid grid-2" style={{ alignItems: 'start' }}>
         <section className="card" aria-labelledby="recent-h">

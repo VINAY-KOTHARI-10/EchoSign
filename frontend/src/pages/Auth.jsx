@@ -10,11 +10,12 @@ import AuthLayout from '../components/AuthLayout';
 
 const OTP_LENGTH = 6;
 
-function OtpStep({ preAuthToken, maskedEmail, onDone }) {
+function OtpStep({ preAuthToken, maskedEmail, emailSent = true, onDone }) {
   const toast = useToast();
   const [digits, setDigits] = useState(Array(OTP_LENGTH).fill(''));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [sent, setSent] = useState(emailSent); // false until a code has really been emailed
   const refs = useRef([]);
 
   const setDigit = (i, v) => {
@@ -51,6 +52,7 @@ function OtpStep({ preAuthToken, maskedEmail, onDone }) {
   const resend = async () => {
     try {
       await api.auth.resendOtp({ preAuthToken });
+      setSent(true); setError('');
       toast('A new code is on its way', 'success');
     } catch (err) { toast(err.message, 'error'); }
   };
@@ -58,7 +60,9 @@ function OtpStep({ preAuthToken, maskedEmail, onDone }) {
   return (
     <form onSubmit={submit} noValidate>
       <h1>Check your email</h1>
-      <p className="muted" id="otp-help">We sent a 6-digit code to <b>{maskedEmail}</b>.</p>
+      {sent
+        ? <p className="muted" id="otp-help">We sent a 6-digit code to <b>{maskedEmail}</b>.</p>
+        : <p className="error-text" id="otp-help" role="alert" style={{ justifyContent: 'flex-start' }}>We could not email a code to <b>{maskedEmail}</b> just now. Press “Resend code” to try again. If it keeps failing, the email service may be down.</p>}
       <div className="otp-row" onPaste={onPaste} role="group" aria-label="6-digit verification code" aria-describedby="otp-help">
         {digits.map((d, i) => (
           <input
@@ -101,7 +105,7 @@ export default function Auth({ mode }) {
         ? await api.auth.register(form)
         : await api.auth.login({ email: form.email, password: form.password });
       if (res.requiresOtp) {
-        setOtp({ preAuthToken: res.preAuthToken, maskedEmail: res.maskedEmail });
+        setOtp({ preAuthToken: res.preAuthToken, maskedEmail: res.maskedEmail, emailSent: res.emailSent !== false });
       } else {
         await establishSession();
       }

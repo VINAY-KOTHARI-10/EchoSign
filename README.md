@@ -1,533 +1,135 @@
-# 🌊 EchoSign — Sign Language & Speech-to-Text Classroom Assistant
+# 🌊 EchoSign: Sign Language & Speech-to-Text Classroom Assistant
 
-> Converts speech and supported sign-language gestures into real-time text captions, helping deaf and hard-of-hearing students follow lectures.
+> An accessibility platform for classrooms that converts speech and supported sign-language gestures into real-time text captions, helping deaf and hard-of-hearing students follow lectures.
 
-![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js)
-![Express](https://img.shields.io/badge/Express-4.x-000000?logo=express)
-![MongoDB](https://img.shields.io/badge/MongoDB-7.x-47A248?logo=mongodb)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-4169E1?logo=postgresql)
-![Socket.IO](https://img.shields.io/badge/Socket.IO-4.x-010101?logo=socket.io)
+A student can join a class with a code, follow the lecture through live captions, answer by typing or signing, recover from a dropped connection without losing anything, and come back later to the full transcript, lecture notes, a quiz, and a question-answering assistant grounded in what the teacher actually said.
 
-
-> **Deploying?** See [DEPLOYMENT.md](DEPLOYMENT.md) for Render, Docker and plain Node instructions.
+**Deploying?** See [DEPLOYMENT.md](DEPLOYMENT.md). **Database design:** [docs/DATABASE.md](docs/DATABASE.md).
 
 ---
 
-## 📋 Table of Contents
+## What it does (and what it does not)
 
-1. [Project Idea](#1-project-idea)
-2. [Folder Structure](#2-folder-structure)
-3. [Tech Stack](#3-tech-stack)
-4. [Database Setup](#4-database-setup)
-5. [API Endpoints](#5-api-endpoints)
-6. [Authentication Flow](#6-authentication-flow)
-7. [Socket.IO Events](#7-socketio-events)
-8. [Installation & Setup](#8-installation--setup)
-9. [Testing Instructions](#9-testing-instructions)
-10. [Deployment Guide](#10-deployment-guide)
-11. [Architecture Decision](#11-architecture-decision)
-12. [Environment Variables](#12-environment-variables)
-
----
-
-## 1. Project Idea
-
-### Problem statement
-
-**Sign Language & Speech-to-Text Classroom Assistant** — build an accessibility platform for classrooms that converts speech and supported sign-language gestures into real-time text captions, helping deaf and hard-of-hearing students follow lectures.
-
-EchoSign delivers this with live speech captions, in-browser sign recognition (ASL fingerspelling and phrase gestures), typed captions, a searchable transcript, AI class notes, and a language-practice area. The sections below also describe the original language-learning features it grew from.
-
-The platform uses:
-
-- 🎙️ **Web Speech API + Groq AI** for real-time pronunciation analysis
-- 📊 **Chart.js** for animated accuracy trend charts
-- 💬 **Socket.IO** for live community chat rooms
-- 🔐 **JWT + RBAC** for secure authentication
-- 🗄️ **MongoDB** (Mongoose) for activity/pronunciation records
-- 🐘 **PostgreSQL** (Prisma) for user accounts, sessions, and relational data
-
-Users speak into their microphone, the speech is transcribed in real-time, then Gemini AI analyzes pronunciation at the phoneme level and returns accuracy scores, word breakdowns, and AI-generated improvement tips.
+| Area | What you get |
+|---|---|
+| **Live captions** | Speech, recognised sign, and typed captions share one system: every caption has a database id, an idempotency key, a speaker taken from the login (never from the client), a source and a timestamp. Captions appear in order, are stored once even when a send is retried, and can be corrected by the host or a captioner (the original text is kept). |
+| **Speech to text** | The browser's Web Speech API (Chrome / Edge). Interim text is broadcast as a draft but **never stored**; only final sentences become captions. Where speech is unsupported, students can type. *Chrome and Edge send microphone audio to Google / Microsoft to be transcribed; EchoSign only receives the words.* |
+| **Sign to text** | MediaPipe hand tracking **in the browser** (no video leaves the device). ASL fingerspelling A–Z (J and Z need a motion) plus a small set of phrase gestures and teacher-recorded class gestures. A letter is accepted only when it is stable over about half a second, confident, and not ambiguous; uncertain shapes are never forced into a caption. It is **not** a full sign-language translator. |
+| **Reliability** | Automatic reconnection, token refresh, class re-join, catch-up of missed captions, an outbox that retries unsent captions (over the socket, or HTTP when the socket is down), connection status and an offline banner. |
+| **Transcript** | Complete, cursor-paginated transcript with keyword, speaker and source filters, jump-to-time, and TXT / SRT / print-to-PDF export. No fixed cap. |
+| **AI notes and quiz** | Long lectures are read in chunks and combined; output is validated; a clearly labelled non-AI fallback is used when the AI service is down. Notes record how they were made. |
+| **Ask your lecture** | Students ask questions; answers come only from the stored transcript and notes, with timestamped references. If the lecture did not cover it, the answer says so. |
+| **Translation** | Batched, cached, de-duplicated; failures are reported (never faked) and can be retried. The original transcript is always kept. |
+| **Roles** | Admin, Teacher, Student with a single permission table, role-based menus, a 403 page, a roles & permissions page, and an audit log. |
+| **Dashboards** | Teacher: classes, attendance, captions by source, lecture time, saved summaries, topics. Admin: users, roles, classes, online now, service status. Student: "My lectures" library. All numbers come from real records. |
+| **Attendance** | Counted per *person* (two devices count once), with first join, last departure, reconnection count and total time (saved every minute, so a restart loses at most one). |
+| **Installable (PWA)** | App shell, install prompt, online/offline indicator, and offline reading of saved lecture notes. Live classes need a connection and say so. |
+| **Accessibility** | Light, dark and high-contrast themes; font size, family (including Lexend and Atkinson Hyperlegible), line and letter spacing; reduced motion; keyboard navigation; screen-reader labels and optional caption announcements; flash and vibration alerts. |
+| **Text to sign** | Shows the ASL fingerspelling hand shape for each letter of a word. It does not translate into sign language. |
 
 ---
 
-## 2. Folder Structure
+## Tech stack
+
+- **Frontend:** React 18, Vite, React Router, Lucide, plain CSS design system (`frontend/src/styles`).
+- **Backend:** Node.js, Express, Socket.IO, JWT with rotating refresh tokens, Google OAuth, Brevo email, Groq AI.
+- **Data:** PostgreSQL via Prisma (accounts, classes, captions, attendance, audit) and MongoDB via Mongoose (login sessions, one-time codes, practice activity feed).
+- **Sign recognition:** MediaPipe tasks-vision plus a rule-based fingerspelling classifier.
+- **Deployment:** one Docker image, Render blueprint, Docker Compose, GitHub Actions.
+
+One deployable service: the Express server serves the API, the Socket.IO connection and the built React app from a single address.
+
+## Project structure
 
 ```
 echosign/
 ├── backend/
+│   ├── prisma/              schema + migrations (additive only; never edit an applied migration)
 │   ├── src/
-│   │   ├── app.js                    # Express app setup
-│   │   ├── server.js                 # HTTP server + bootstrap
-│   │   ├── config/
-│   │   │   ├── mongodb.js            # Mongoose connection
-│   │   │   └── postgres.js           # Prisma connection
-│   │   ├── controllers/
-│   │   │   ├── authController.js     # Register/Login/Refresh
-│   │   │   ├── speechController.js   # Gemini analysis
-│   │   │   ├── sessionController.js  # Practice sessions CRUD
-│   │   │   ├── userController.js     # User profile
-│   │   │   └── chatController.js     # Chat messages
-│   │   ├── middleware/
-│   │   │   ├── authMiddleware.js     # JWT + RBAC
-│   │   │   ├── errorMiddleware.js    # Global error handler
-│   │   │   ├── rateLimiter.js        # Rate limiting
-│   │   │   └── requestLogger.js      # Request ID + timing
-│   │   ├── models/
-│   │   │   └── mongo/
-│   │   │       ├── UserActivity.js   # MongoDB: activity tracking
-│   │   │       └── PronunciationRecord.js # MongoDB: AI analysis
-│   │   ├── routes/v1/
-│   │   │   ├── authRoutes.js
-│   │   │   ├── userRoutes.js
-│   │   │   ├── speechRoutes.js
-│   │   │   ├── sessionRoutes.js
-│   │   │   ├── chatRoutes.js
-│   │   │   ├── adminRoutes.js
-│   │   │   └── languageRoutes.js
-│   │   ├── sockets/
-│   │   │   └── socketManager.js      # Socket.IO logic
-│   │   └── utils/
-│   │       ├── logger.js             # Winston logger
-│   │       ├── jwtHelper.js          # JWT utils
-│   │       └── fileStream.js         # fs + zlib + streams
-│   ├── prisma/
-│   │   └── schema.prisma             # PostgreSQL schema
-│   ├── tests/
-│   │   └── auth.test.js              # Jest + Supertest tests
-│   ├── .env.example
-│   ├── jest.config.js
-│   └── package.json
-│
-└── frontend/
-    ├── public/
-    │   ├── index.html                # Landing page
-    │   ├── css/
-    │   │   ├── main.css              # Global styles
-    │   │   └── dashboard.css         # Dashboard styles
-    │   └── js/
-    │       ├── api.js                # Fetch API client
-    │       ├── auth.js               # Auth module
-    │       └── dashboard.js          # Dashboard + speech
-    └── pages/
-        └── dashboard.html            # Main app dashboard
+│   │   ├── app.js           Express app: security headers, CORS/CSRF, health, routes, static frontend
+│   │   ├── server.js        startup, env validation, graceful shutdown
+│   │   ├── config/          permissions.js (the role table), cors, env, databases, chat rooms
+│   │   ├── controllers/     auth, classrooms (captions, transcript, export, notes, ask, dashboards), sessions...
+│   │   ├── sockets/         socketManager.js, presenceRegistry.js (per-person attendance)
+│   │   ├── utils/           lectureAi.js (chunking, validation, Q&A), transcriptExport.js, jwtHelper, stats...
+│   │   ├── routes/v1/       REST routes
+│   │   └── Services/        email (Brevo), audit log
+│   ├── tests/               Jest: auth, permissions, presence, AI logic, exports, env, redaction
+│   ├── e2e/                 end-to-end suite (real server, sockets and databases)
+│   └── scripts/             run-e2e, test-migrations, maintenance, set-role, make-admin
+├── frontend/
+│   ├── src/                 pages, components, hooks (useCaptionRoom, useSignRecognition, useSpeech), lib (pure logic)
+│   ├── public/              manifest, service worker, icons
+│   ├── tests/               node:test: recognition, evaluation, outbox, contrast (accessibility), captions
+│   └── scripts/             make-icons, eval-signs (evaluation report from real recordings)
+├── docs/                    DATABASE.md, Postman collection
+├── Dockerfile  docker-compose.yml  render.yaml  .github/workflows/
+└── DEPLOYMENT.md
 ```
 
----
+## Run it locally
 
-## 3. Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| **Runtime** | Node.js 18+ |
-| **Framework** | Express.js 4.x |
-| **MongoDB ORM** | Mongoose 8.x |
-| **PostgreSQL ORM** | Prisma 5.x |
-| **Auth** | JWT (jsonwebtoken) + bcryptjs |
-| **Real-time** | Socket.IO 4.x |
-| **Validation** | express-validator |
-| **Security** | helmet, cors, rate-limiter-flexible |
-| **Logging** | Winston |
-| **Testing** | Jest + Supertest |
-| **AI** | Google Gemini 1.5 Flash API |
-| **Frontend** | HTML5 + CSS3 + Vanilla JS ES6+ |
-| **Charts** | Chart.js 4.x |
-| **Fonts** | Syne + DM Sans (Google Fonts) |
-
----
-
-## 4. Database Setup
-
-### MongoDB (Mongoose)
-
-MongoDB stores:
-- **UserActivity** — session history, streaks, language progress (document model, optimized for reads)
-- **PronunciationRecord** — AI analysis results, phoneme data, TTL index for auto-cleanup (90 days)
+You need Node 18+, a PostgreSQL database (Neon works well) and a MongoDB database (Atlas free tier).
 
 ```bash
-# Install MongoDB locally
-brew install mongodb-community  # macOS
-# OR use MongoDB Atlas (cloud): https://cloud.mongodb.com
-
-# Set in .env:
-MONGODB_URI=mongodb://localhost:27017/echosign
+cp backend/.env.example backend/.env      # fill in the database URLs and three secrets
+npm run install:all
+cd backend && npx prisma migrate deploy && cd ..
+npm run live                              # builds the frontend and serves everything at http://localhost:5000
 ```
 
-**Key design decisions:**
-- MongoDB stores time-series/analytics data (better for frequent appends)
-- TTL indexes auto-delete pronunciation records after 90 days
-- Aggregation pipelines for accuracy trend queries
-- Pagination implemented as a static method on the model
+For development with hot reload: `npm run dev:backend` and `npm run dev:frontend` (Vite on :5173).
 
-### PostgreSQL (Prisma)
-
-PostgreSQL stores:
-- **users** — accounts, roles (relational, normalized)
-- **user_profiles** — language preferences, stats
-- **practice_sessions** — session records with accuracy/duration
-- **achievements** — earned badges
-- **chat_messages** — persistent chat history
-- **languages** — supported language catalog
+Make yourself an admin (register first), then change roles from the Admin panel:
 
 ```bash
-# Install PostgreSQL
-brew install postgresql  # macOS
-createdb echosign
-
-# Set in .env:
-DATABASE_URL="postgresql://user:paras@localhost:5432/echosign?schema=public"
-
-# Run migrations
-cd backend
-npx prisma generate
-npx prisma migrate dev --name init
-
-# Seed languages (optional)
-npx prisma db seed
+npm --prefix backend run set-role -- you@example.com ADMIN
 ```
 
----
+### Environment variables
 
-## 5. API Endpoints
+Full list with comments: [backend/.env.example](backend/.env.example). Required in production: `MONGODB_URI`, `DATABASE_URL`, `DIRECT_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `SESSION_SECRET`, `FRONTEND_URL`. Without `BREVO_API_KEY` + `EMAIL_FROM` nobody can verify an account; without `GROQ_API_KEY` notes, questions and translation fall back to basic behaviour or report that they are unavailable. The server refuses to start in production when a required value is missing.
 
-### Base URL: `http://localhost:5000/api/v1`
+## Roles and permissions
 
-#### Auth
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/auth/register` | ❌ | Register new user |
-| POST | `/auth/login` | ❌ | Login, get token pair |
-| POST | `/auth/refresh` | Cookie | Refresh access token |
-| POST | `/auth/logout` | ❌ | Clear cookies |
+All rules live in one table, `backend/src/config/permissions.js`. The backend checks it; the frontend reads it from `GET /api/v1/users/permissions`; the **Roles & permissions** page (`/access`) shows it. Inside a class, separate roles apply: Host (the teacher), Captioner (a trusted student who may correct captions) and Student. A class code is an invitation: reading a class's captions, notes or translations needs membership, and wrong codes are rate limited.
 
-#### Users
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/users/me` | ✅ | Get current user + activity |
-| PATCH | `/users/profile` | ✅ | Update language preferences |
-| GET | `/users/leaderboard` | ✅ | Top 10 users by sessions |
+## Security highlights
 
-#### Speech Analysis
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/speech/analyze` | ✅ | Analyze pronunciation (Gemini) |
-| GET | `/speech/history` | ✅ | Paginated pronunciation history |
-| GET | `/speech/accuracy-trend` | ✅ | Daily accuracy trend (30/90d) |
+- Short-lived access tokens (header only), refresh-token rotation with reuse detection, logout on this device or all devices, rate-limited login and one-time codes.
+- CSP written for what the app loads, camera/microphone allowed for our own pages, `Permissions-Policy`, request ids, sanitised error messages, secret redaction in logs, 512 KB body limit.
+- Cookies are `HttpOnly`, `Secure` in production; state-changing requests from other sites are refused (Origin check).
+- Sockets: authenticated, token re-checked as it expires, membership checked on every class event, payloads validated and size-limited, per-user rate limits, no joining arbitrary rooms.
+- An email failure is reported to the person, never shown as success.
 
-#### Sessions
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/sessions` | ✅ | List sessions (paginated) |
-| POST | `/sessions` | ✅ | Save completed session |
-| GET | `/sessions/:id` | ✅ | Get single session |
-| DELETE | `/sessions/:id` | ✅ | Delete session |
-
-#### Chat
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/chat/messages` | ✅ | Get room messages |
-| POST | `/chat/messages` | ✅ | Send message (REST + socket) |
-
-#### Languages & Admin
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/languages` | ❌ | List supported languages |
-| POST | `/languages` | ADMIN | Add language |
-| GET | `/admin/users` | ADMIN | List all users |
-| PATCH | `/admin/users/:id/role` | ADMIN | Change user role |
-| GET | `/admin/stats` | ADMIN | Platform statistics |
-
----
-
-## 6. Authentication Flow
-
-```
-┌─────────┐     POST /auth/register      ┌─────────────┐
-│ Client  │ ──────────────────────────►  │  Server     │
-│         │  { email, username, password} │             │
-│         │ ◄──────────────────────────  │ bcrypt hash │
-│         │  { accessToken, user }        │ save to PG  │
-│         │  + refreshToken cookie        │ create Mongo│
-└─────────┘                              └─────────────┘
-
-          ┌─────── Subsequent Requests ──────────┐
-          │                                      │
-          │  Authorization: Bearer <accessToken> │
-          │                                      │
-          │  Middleware:                         │
-          │  1. Extract token from header/cookie │
-          │  2. verifyAccessToken() → decoded    │
-          │  3. prisma.user.findUnique()         │
-          │  4. Attach req.user                  │
-          │  5. RBAC: authorize('ADMIN')         │
-          └──────────────────────────────────────┘
-
-          ┌────── Token Refresh Flow ────────────┐
-          │                                      │
-          │  Access token expires (401)          │
-          │  → POST /auth/refresh                │
-          │  → Read refreshToken cookie          │
-          │  → verifyRefreshToken()              │
-          │  → Issue new token pair              │
-          │  → Rotate refresh token (security)  │
-          └──────────────────────────────────────┘
-```
-
----
-
-## 7. Socket.IO Events
-
-### Client → Server
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `chat:join` | `roomId: string` | Join a chat room |
-| `chat:leave` | `roomId: string` | Leave a chat room |
-| `chat:message` | `{ content, roomId }` | Send a message |
-| `chat:typing` | `{ roomId, isTyping }` | Typing indicator |
-| `session:start` | `{ sessionId }` | Start practice session |
-
-### Server → Client
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `chat:message` | Message object | New chat message |
-| `chat:userJoined` | `{ username, timestamp }` | User joined room |
-| `chat:userLeft` | `{ username }` | User left room |
-| `chat:typing` | `{ username, isTyping }` | Typing status |
-| `users:online` | `number` | Online user count |
-| `session:completed` | `{ sessionId, accuracy }` | Session saved |
-| `pronunciation:analyzed` | `{ recordId, accuracy }` | Analysis complete |
-
----
-
-## 8. Installation & Setup
-
-### Prerequisites
-- Node.js 18+
-- MongoDB 7.x (local or Atlas)
-- PostgreSQL 15+ (local or cloud)
-- npm or yarn
-
-### Backend Setup
+## Testing
 
 ```bash
-# 1. Clone and install
-cd echosign/backend
-npm install
-
-# 2. Configure environment
-cp .env.example .env
-# Edit .env with your values
-
-# 3. Setup PostgreSQL with Prisma
-npx prisma generate
-npx prisma migrate dev --name init
-
-# 4. Start development server
-npm run dev
-
-# Server runs at: http://localhost:5000
+npm test                           # frontend tests + backend Jest (databases mocked)
+npm --prefix backend run e2e       # end-to-end: real server, sockets, Postgres and MongoDB (throwaway schema + database)
+npm --prefix backend run test:migrations   # migrations on a clean database and on a populated one
 ```
 
-### Frontend Setup
+`e2e` and `test:migrations` create and then drop their own schema/database and never touch your real tables. Frontend tests include the temporal recognition logic, the evaluation maths, the caption outbox, and **WCAG contrast checks of the real colour tokens in all four themes**.
 
-The frontend is static HTML/CSS/JS — no build step needed.
+### Measuring sign recognition honestly
+
+Synthetic hands only prove the logic is self-consistent. To measure real performance: open **Sign Lab → Recognition test**, record consented samples (landmark numbers only, no video) across different people, lighting, cameras, backgrounds and distances, export them, then
 
 ```bash
-# Option A: Simple static server
-cd echosign/frontend/public
-npx serve .
-
-# Option B: VS Code Live Server extension
-# Right-click index.html → Open with Live Server
-
-# Option C: Python
-python3 -m http.server 3000
+cd frontend && node scripts/eval-signs.mjs samples-p1.json samples-p2.json --out report.md
 ```
 
-**Important:** Update `BASE_URL` in `frontend/public/js/api.js` if not using localhost:5000.
+This produces accuracy, precision, recall, a confusion matrix, rejection rate and per-letter results, re-scoring the same recordings with the current classifier so improvements can be measured repeatably. No accuracy figure is published in this repository, because none has been measured on enough real people yet.
 
----
+## Known limitations
 
-## 9. Testing Instructions
-
-### Automated Tests (Jest + Supertest)
-
-```bash
-cd backend
-
-# Run all tests
-npm test
-
-# Run with coverage
-npm test -- --coverage
-
-# Watch mode
-npm test -- --watch
-```
-
-### Postman API Tests
-
-1. Import `docs/EchoSign.postman_collection.json` into Postman
-2. Set collection variable `baseUrl` to `http://localhost:5000/api/v1`
-3. Run in order: **Register → Login → Test protected routes**
-4. The Register and Login tests auto-save the `accessToken` variable
-
-### Manual Test Checklist
-
-```
-Auth Flow:
-[ ] Register with valid data → 201 + token
-[ ] Register with duplicate email → 409
-[ ] Login with correct creds → 200 + token
-[ ] Access protected route without token → 401
-[ ] Access admin route as user → 403
-
-Speech:
-[ ] POST /speech/analyze with matching text → 200 + accuracy
-[ ] POST /speech/analyze rate limit (31+ calls/min) → 429
-[ ] GET /speech/history with pagination → 200 + pagination meta
-
-Real-time:
-[ ] Connect Socket.IO with valid token → connected
-[ ] Connect without token → disconnected
-[ ] Send chat message → received by room members
-[ ] Typing indicator → shown to others
-```
-
----
-
-## 10. Deployment Guide
-
-### Docker (Recommended)
-
-```dockerfile
-# backend/Dockerfile
-FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-COPY prisma ./prisma/
-RUN npx prisma generate
-COPY src ./src/
-EXPOSE 5000
-CMD ["node", "src/server.js"]
-```
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  api:
-    build: ./backend
-    ports: ["5000:5000"]
-    env_file: ./backend/.env
-    depends_on: [mongo, postgres]
-
-  mongo:
-    image: mongo:7
-    volumes: [mongo_data:/data/db]
-
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: echosign
-      POSTGRES_USER: pguser
-      POSTGRES_PASSWORD: pgpassword
-    volumes: [pg_data:/var/lib/postgresql/data]
-
-volumes:
-  mongo_data:
-  pg_data:
-```
-
-```bash
-docker-compose up -d
-```
-
-### Railway / Render Deployment
-
-```bash
-# Set environment variables in dashboard:
-NODE_ENV=production
-MONGODB_URI=<Atlas URI>
-DATABASE_URL=<Neon/Supabase URI>
-JWT_SECRET=<strong random string>
-JWT_REFRESH_SECRET=<strong random string>
-GEMINI_API_KEY=<your key>
-ALLOWED_ORIGINS=https://yourdomain.com
-```
-
-### Frontend (Netlify / Vercel)
-
-```bash
-# Update api.js BASE_URL for production
-const BASE_URL = 'https://your-api.railway.app/api/v1';
-
-# Deploy frontend/public directory
-netlify deploy --dir=frontend/public --prod
-```
-
-### GitHub Repository Structure
-
-```
-.github/
-  workflows/
-    test.yml      # Run tests on PR
-    deploy.yml    # Deploy on main push
-backend/
-frontend/
-docs/
-README.md
-docker-compose.yml
-.gitignore
-```
-
----
-
-## 11. Architecture Decision
-
-### Monolith (chosen) vs Microservices
-
-EchoSign uses a **Modular Monolith** architecture:
-
-**Why not microservices?**
-- Small team / single project: microservices add deployment/networking overhead
-- Services (auth, speech, chat) share DB connections and session state
-- Latency: internal function calls << HTTP between services
-
-**Monolith benefits here:**
-- Single deployment, simple local dev
-- Shared middleware (auth, logging, rate limit) applied once
-- Transactions across auth + activity + session in one DB call
-
-**When to migrate to microservices:**
-- 10K+ daily active users → split Speech AI service (expensive, scalable independently)
-- Team grows → separate Chat service with dedicated Redis/Pub-Sub
-- Usage: `SpeechService`, `AuthService`, `ChatService` → each with own DB
-
----
-
-## 12. Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `PORT` | No | Server port (default 5000) |
-| `MONGODB_URI` | ✅ | MongoDB connection string |
-| `DATABASE_URL` | ✅ | PostgreSQL Prisma URL |
-| `JWT_SECRET` | ✅ | Access token signing key |
-| `JWT_EXPIRES_IN` | No | Access token TTL (default 7d) |
-| `JWT_REFRESH_SECRET` | ✅ | Refresh token key |
-| `SESSION_SECRET` | ✅ | Cookie/session secret |
-| `GEMINI_API_KEY` | Recommended | Google Gemini API key |
-| `OPENAI_API_KEY` | Optional | OpenAI for embeddings |
-| `ALLOWED_ORIGINS` | ✅ | Comma-separated CORS origins |
-| `NODE_ENV` | No | development/production/test |
-| `LOG_LEVEL` | No | Winston log level (info) |
-
-> Get Gemini API key free at: https://aistudio.google.com/app/apikey
-
----
+- Speech recognition depends on Chrome or Edge and an internet connection; accuracy varies with accent, noise and microphone.
+- Sign recognition covers ASL fingerspelling and a few gestures. J and Z need a motion; A, E, M, N, S, T look alike and are held longer before they are accepted. Lighting, camera quality and hand position matter.
+- AI notes can contain mistakes; they are labelled as AI-generated and the original transcript is always available.
+- Free hosting tiers sleep when idle; a live class should use an always-on plan.
+- Socket.IO runs in one process. Scaling to several instances needs a Redis adapter (not added, because one instance serves a classroom well).
 
 ## License
 
-MIT © 2026 EchoSign
+For educational use. Add a license before publishing publicly.

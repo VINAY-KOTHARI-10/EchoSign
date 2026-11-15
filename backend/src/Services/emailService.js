@@ -197,6 +197,12 @@ const templates = {
 
 // ── Core send helper ──────────────────────────────────────────────────────────
 async function sendEmail({ to, subject, html }) {
+  if (!process.env.BREVO_API_KEY) {
+    logger.error(`[Email] BREVO_API_KEY is not set, cannot send "${subject}"`);
+    const notConfigured = new Error('Email is not configured on this server');
+    notConfigured.code = 'EMAIL_FAILED';
+    throw notConfigured;
+  }
   try {
     await emailApi.sendTransacEmail({
       sender: {
@@ -210,8 +216,11 @@ async function sendEmail({ to, subject, html }) {
 
     logger.info(`[Email] ✓ Sent "${subject}" → ${to}`);
   } catch (err) {
-    logger.error(`[Email] ✗ Failed to send "${subject}" → ${to}`);
-    logger.error(err.message);
+    logger.error(`[Email] ✗ Failed to send "${subject}" → ${to}: ${err.message}`);
+    // Callers decide what a failure means; it must never look like a success.
+    const failure = new Error('Email delivery failed');
+    failure.code = 'EMAIL_FAILED';
+    throw failure;
   }
 }
 

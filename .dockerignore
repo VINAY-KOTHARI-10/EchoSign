@@ -10,3 +10,7 @@ docs
 *.md
 collect-code.js
 *_code.txt
+backend/e2e
+backend/tests
+frontend/tests
+frontend/scripts

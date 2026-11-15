@@ -1,13 +1,14 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, Hand, RefreshCw, Search, Shuffle, XCircle } from 'lucide-react';
 import HandDiagram from '../components/HandDiagram';
+import RecognitionLab from '../components/RecognitionLab';
 import SignView from '../components/SignView';
 import { EmptyState, PageHeader, StatusBadge, TabPanel, Tabs } from '../components/ui';
 import useSignRecognition from '../hooks/useSignRecognition';
 import { LETTERS } from '../lib/fingerspelling';
 import { GESTURES } from '../lib/signGestures';
 
-const TABS = [{ id: 'dictionary', label: 'Dictionary' }, { id: 'practice', label: 'Practice' }, { id: 'text', label: 'Text to sign' }];
+const TABS = [{ id: 'dictionary', label: 'Dictionary' }, { id: 'practice', label: 'Practice' }, { id: 'text', label: 'Text to sign' }, { id: 'test', label: 'Recognition test' }];
 const ALL = Object.keys(LETTERS);
 const RELIABLE = ALL.filter((l) => !LETTERS[l].shaky);
 const reliability = (ch) => (LETTERS[ch].motion ? ['warn', 'Needs motion'] : LETTERS[ch].shaky ? ['warn', 'Less reliable'] : ['ok', 'Reliable']);
@@ -256,6 +257,7 @@ export default function Signs() {
       <TabPanel id="dictionary" active={tab === 'dictionary'} idPrefix="lab"><Dictionary /></TabPanel>
       <TabPanel id="practice" active={tab === 'practice'} idPrefix="lab"><Practice /></TabPanel>
       <TabPanel id="text" active={tab === 'text'} idPrefix="lab"><TextToSign /></TabPanel>
+      <TabPanel id="test" active={tab === 'test'} idPrefix="lab">{tab === 'test' && <RecognitionLab />}</TabPanel>
     </>
   );
 }

@@ -1,129 +1,154 @@
 // tests/auth.test.js
-// API Tests for Authentication Routes
+// API tests for the authentication routes (databases and email mocked; the real flow is covered by npm run e2e).
 
 'use strict';
 
 const request = require('supertest');
-const app = require('../src/app');
 
-// Mock DB connections for testing
-jest.mock('../src/config/mongodb', () => ({
-  connectMongoDB: jest.fn().mockResolvedValue(true),
-}));
+jest.mock('../src/config/mongodb', () => ({ connectMongoDB: jest.fn().mockResolvedValue(true) }));
 jest.mock('../src/config/postgres', () => ({
   connectPostgres: jest.fn().mockResolvedValue(true),
   prisma: {
-    user: {
-      findFirst: jest.fn(),
-      findUnique: jest.fn(),
-      create: jest.fn(),
-    },
-    userProfile: {
-      create: jest.fn(),
-      update: jest.fn(),
-    },
+    user: { findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn() },
+    userProfile: { create: jest.fn(), update: jest.fn() },
     $transaction: jest.fn(),
+    $queryRaw: jest.fn(),
   },
 }));
-jest.mock('../src/models/mongo/UserActivity', () => ({
-  create: jest.fn(),
-  findOne: jest.fn(),
+jest.mock('../src/models/mongo/UserActivity', () => ({ create: jest.fn(), findOne: jest.fn() }));
+jest.mock('../src/models/mongo/OtpRecord', () => ({ upsertOtp: jest.fn().mockResolvedValue({}), findOne: jest.fn() }));
+jest.mock('../src/Services/emailService', () => ({
+  sendLoginOtp: jest.fn(),
+  sendWelcome: jest.fn().mockResolvedValue(undefined),
+  sendPasswordReset: jest.fn(),
+  sendPasswordChanged: jest.fn().mockResolvedValue(undefined),
+  sendOAuthWelcome: jest.fn().mockResolvedValue(undefined),
+  sendVerifyEmail: jest.fn(),
 }));
 
+const app = require('../src/app');
 const { prisma } = require('../src/config/postgres');
 const UserActivity = require('../src/models/mongo/UserActivity');
+const EmailService = require('../src/Services/emailService');
+
+const mockNewUser = () => {
+  prisma.user.findFirst.mockResolvedValue(null);
+  prisma.$transaction.mockImplementation(async (cb) => cb({
+    user: { create: jest.fn().mockResolvedValue({ id: 'uuid-123', email: 'test@test.com', username: 'testuser', role: 'USER' }) },
+    userProfile: { create: jest.fn().mockResolvedValue({}) },
+  }));
+  UserActivity.create.mockResolvedValue({});
+};
+const registerBody = { email: 'test@test.com', username: 'testuser', password: 'password123' };
 
 describe('Auth API', () => {
-
   describe('POST /api/v1/auth/register', () => {
     it('should return 400 for missing fields', async () => {
-      const res = await request(app)
-        .post('/api/v1/auth/register')
-        .send({ email: 'invalid' });
+      const res = await request(app).post('/api/v1/auth/register').send({ email: 'invalid' });
       expect(res.status).toBe(400);
     });
 
     it('should return 400 for short password', async () => {
-      const res = await request(app)
-        .post('/api/v1/auth/register')
-        .send({ email: 'test@test.com', username: 'testuser', password: '123' });
+      const res = await request(app).post('/api/v1/auth/register').send({ email: 'test@test.com', username: 'testuser', password: '123' });
       expect(res.status).toBe(400);
     });
 
-    it('should register successfully with valid data', async () => {
-      prisma.user.findFirst.mockResolvedValue(null);
-      prisma.$transaction.mockImplementation(async (cb) => {
-        return cb({
-          user: {
-            create: jest.fn().mockResolvedValue({
-              id: 'uuid-123',
-              email: 'test@test.com',
-              username: 'testuser',
-              role: 'USER',
-            }),
-          },
-          userProfile: { create: jest.fn().mockResolvedValue({}) },
-        });
-      });
-      UserActivity.create.mockResolvedValue({});
-
-      const res = await request(app)
-        .post('/api/v1/auth/register')
-        .send({
-          email: 'test@test.com',
-          username: 'testuser',
-          password: 'password123',
-        });
-
+    it('creates the account and asks for the emailed code (no tokens yet)', async () => {
+      mockNewUser();
+      EmailService.sendLoginOtp.mockResolvedValue(undefined);
+      const res = await request(app).post('/api/v1/auth/register').send(registerBody);
       expect(res.status).toBe(201);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data).toHaveProperty('accessToken');
+      expect(res.body.requiresOtp).toBe(true);
+      expect(res.body.emailSent).toBe(true);
+      expect(res.body.preAuthToken).toBeTruthy();
+      expect(res.body.data).toBeUndefined();
+      expect(JSON.stringify(res.body)).not.toMatch(/passwordHash/);
+    });
+
+    it('does not pretend the email was sent when delivery fails', async () => {
+      mockNewUser();
+      EmailService.sendLoginOtp.mockRejectedValue(Object.assign(new Error('Email delivery failed'), { code: 'EMAIL_FAILED' }));
+      const res = await request(app).post('/api/v1/auth/register').send(registerBody);
+      expect(res.status).toBe(201);
+      expect(res.body.emailSent).toBe(false);
+      expect(res.body.message).toMatch(/could not email/i);
     });
 
     it('should return 409 for duplicate user', async () => {
       prisma.user.findFirst.mockResolvedValue({ id: 'existing', email: 'test@test.com' });
-
-      const res = await request(app)
-        .post('/api/v1/auth/register')
-        .send({
-          email: 'test@test.com',
-          username: 'testuser',
-          password: 'password123',
-        });
-
+      const res = await request(app).post('/api/v1/auth/register').send(registerBody);
       expect(res.status).toBe(409);
     });
   });
 
   describe('POST /api/v1/auth/login', () => {
     it('should return 400 for missing credentials', async () => {
-      const res = await request(app)
-        .post('/api/v1/auth/login')
-        .send({});
+      const res = await request(app).post('/api/v1/auth/login').send({});
       expect(res.status).toBe(400);
     });
 
     it('should return 401 for non-existent user', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
-      const res = await request(app)
-        .post('/api/v1/auth/login')
-        .send({ email: 'noone@test.com', password: 'password' });
+      const res = await request(app).post('/api/v1/auth/login').send({ email: 'noone@test.com', password: 'password' });
       expect(res.status).toBe(401);
     });
   });
 
-  describe('GET /health', () => {
-    it('should return 200 health check', async () => {
-      const res = await request(app).get('/health');
-      expect(res.status).toBe(200);
-      expect(res.body.status).toBe('ok');
+  describe('POST /api/v1/auth/refresh', () => {
+    it('answers 401 (not 500) when there is no refresh token or an invalid one', async () => {
+      expect((await request(app).post('/api/v1/auth/refresh')).status).toBe(401);
+      const bad = await request(app).post('/api/v1/auth/refresh').set('Cookie', 'refreshToken=not-a-jwt');
+      expect(bad.status).toBe(401);
+      expect(bad.body.code).toBe('INVALID_REFRESH');
+    });
+
+    it('blocks a cross-site request that carries the cookie', async () => {
+      const res = await request(app).post('/api/v1/auth/refresh').set('Origin', 'https://evil.example').set('Cookie', 'refreshToken=x');
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('CSRF_BLOCKED');
     });
   });
 
-  describe('GET /api/v1/unknown', () => {
-    it('should return 404 for unknown routes', async () => {
+  describe('access control', () => {
+    it('does not accept an access token from a cookie', async () => {
+      const res = await request(app).get('/api/v1/users/me').set('Cookie', 'accessToken=anything');
+      expect(res.status).toBe(401);
+    });
+    it('admin routes need a token', async () => {
+      expect((await request(app).get('/api/v1/admin/stats')).status).toBe(401);
+    });
+  });
+
+  describe('health and errors', () => {
+    it('GET /health and /health/live are up without touching a database', async () => {
+      const res = await request(app).get('/health');
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('ok');
+      expect((await request(app).get('/health/live')).status).toBe(200);
+    });
+
+    it('GET /health/ready reports 503 when a database is down', async () => {
+      prisma.$queryRaw.mockRejectedValue(new Error('db down'));
+      const res = await request(app).get('/health/ready');
+      expect(res.status).toBe(503);
+      expect(res.body.checks.postgres).toBe('down');
+    });
+
+    it('unknown routes return 404 with a request id', async () => {
       const res = await request(app).get('/api/v1/unknown-route');
       expect(res.status).toBe(404);
+      expect(res.body.requestId).toBeTruthy();
+    });
+
+    it('sends a Content-Security-Policy and a request id on every response', async () => {
+      const res = await request(app).get('/health');
+      expect(res.headers['content-security-policy']).toMatch(/default-src 'self'/);
+      expect(res.headers['x-request-id']).toBeTruthy();
+    });
+
+    it('rejects oversized JSON bodies', async () => {
+      const res = await request(app).post('/api/v1/auth/login').send({ email: 'a@b.co', password: 'x'.repeat(600 * 1024) });
+      expect(res.status).toBe(413);
     });
   });
 });

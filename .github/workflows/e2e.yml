@@ -1,0 +1,28 @@
+# End-to-end and migration tests against REAL databases (throwaway schema + database, dropped afterwards).
+# Run by hand: Actions -> "E2E and migrations" -> Run workflow. Needs these repository secrets pointing at a TEST
+# Postgres and MongoDB (never production): E2E_DATABASE_URL (direct), E2E_MONGODB_URI, E2E_JWT_SECRET, E2E_JWT_REFRESH_SECRET.
+name: E2E and migrations
+on: workflow_dispatch
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.E2E_DATABASE_URL }}
+      MONGODB_URI: ${{ secrets.E2E_MONGODB_URI }}
+      JWT_SECRET: ${{ secrets.E2E_JWT_SECRET }}
+      JWT_REFRESH_SECRET: ${{ secrets.E2E_JWT_REFRESH_SECRET }}
+      SESSION_SECRET: ci-session-secret-ci-session-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm, cache-dependency-path: backend/package-lock.json }
+      - run: npm ci
+        working-directory: backend
+      - name: Migrations on a clean database and on existing data
+        run: npm run test:migrations
+        working-directory: backend
+      - name: End-to-end suite
+        run: npm run e2e
+        working-directory: backend

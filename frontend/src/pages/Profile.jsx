@@ -160,7 +160,7 @@ export default function Profile() {
       <TabPanel id="a11y" active={tab === 'a11y'} idPrefix="prof">
         <section className="card" aria-labelledby="a11y-h" style={{ maxWidth: 640 }}>
           <div className="row between"><h2 id="a11y-h" className="card-title" style={{ marginBottom: 0 }}><Accessibility size={16} aria-hidden="true" style={{ display: 'inline', verticalAlign: -2 }} /> Accessibility</h2>
-            <button className="btn btn-ghost btn-sm" onClick={() => { resetPrefs(); setUi({ highContrast: false, reduceMotion: false, theme: 'system' }); }}>Reset</button></div>
+            <button className="btn btn-ghost btn-sm" onClick={() => { resetPrefs(); setUi({ highContrast: false, reduceMotion: false, theme: 'system', announceCaptions: false }); }}>Reset</button></div>
           <p className="muted" style={{ fontSize: 13, margin: '6px 0 16px' }}>These settings are saved on this device and apply across the whole app. More caption options are in each class.</p>
 
           <fieldset className="fieldset field">
@@ -172,6 +172,8 @@ export default function Profile() {
 
           <Toggle id="hc" checked={ui.highContrast} onChange={(v) => setUi({ highContrast: v })} label="High contrast" hint="Stronger colours and borders across the interface." />
           <Toggle id="rm" checked={ui.reduceMotion} onChange={(v) => setUi({ reduceMotion: v })} label="Reduce motion" hint="Turns off animations. Also follows your system setting automatically." />
+
+          <Toggle id="ann" checked={ui.announceCaptions} onChange={(v) => setUi({ announceCaptions: v })} label="Read new captions to my screen reader" hint="Announces each caption from other people in a class, politely, without moving focus. Turn off if it is too chatty." />
 
           <div className="field" style={{ marginTop: 16 }}>
             <label htmlFor="cc-size">Caption text size: <b>{prefs.size}px</b></label>

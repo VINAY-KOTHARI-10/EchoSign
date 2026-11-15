@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, CameraOff, Delete, Hand, Plus, Trash2 } from 'lucide-react';
 import { GESTURES } from '../../lib/signGestures';
+import { confidenceLabel } from '../../lib/recognition';
 import { LETTERS } from '../../lib/fingerspelling';
 import HandDiagram from '../HandDiagram';
 import { StatusBadge } from '../ui';
@@ -15,7 +16,9 @@ export function signStatus(sign, paused) {
   if (sign.status === 'loading') return { status: 'info', text: 'Starting…' };
   if (sign.status === 'running') {
     const c = sign.current;
-    return c ? { status: 'ok', text: `Detected: ${c.letter || c.phrase}` } : { status: 'info', text: 'Detecting hands' };
+    if (c && c.unsure) return { status: 'warn', text: `Unsure: ${c.unsure.join(' or ')}` };
+    if (c) return { status: 'ok', text: `Detected: ${c.letter || c.phrase}` };
+    return sign.hand === 'detected' ? { status: 'info', text: 'Hand seen, hold a letter' } : { status: 'info', text: 'Show your hand' };
   }
   return { status: 'off', text: 'Off' };
 }
@@ -32,7 +35,7 @@ export function SignPreview({ sign }) {
       <div className={`detect ${c ? '' : 'idle'}`} aria-hidden="true">
         <i />
         <span style={{ flex: 1, minWidth: 0 }}>
-          {sign.status === 'loading' ? 'Loading hand tracking…' : c ? <>Sign detected<br /><b>{c.letter || c.phrase}</b></> : 'Detecting…'}
+          {sign.status === 'loading' ? 'Loading hand tracking…' : c && c.unsure ? <>Not sure<br /><b>{c.unsure.join(' / ')}</b></> : c ? <>{c.letter ? 'Reading' : 'Sign detected'}<br /><b>{c.letter || c.phrase}</b></> : sign.hand === 'detected' ? 'Hand seen' : 'Show your hand'}
           {c && <div className="bar"><i style={{ width: `${sign.progress * 100}%`, background: '#4ade80' }} /></div>}
         </span>
       </div>
@@ -72,6 +75,15 @@ export function SignCamera({ sign, signMode, setSignMode, word, setWord, autoSen
         )}
       </div>
 
+      {sign.status === 'running' && (
+        <dl className="sign-readout" aria-label="What the camera sees">
+          <div><dt>Hand</dt><dd>{sign.hand === 'detected' ? 'Detected' : 'Not visible'}</dd></div>
+          <div><dt>Reading</dt><dd>{sign.current?.unsure ? `Unsure (${sign.current.unsure.join(' or ')})` : sign.current?.letter || sign.current?.phrase || '—'}</dd></div>
+          {sign.current?.letter && sign.current.confidence !== undefined && <div><dt>Confidence</dt><dd>{confidenceLabel(sign.current.confidence)} ({Math.round(sign.current.confidence * 100)}%)</dd></div>}
+        </dl>
+      )}
+      {sign.status === 'running' && signMode === 'letters' && <p className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>A letter is only added when the camera is sure. If it keeps flickering between two letters it waits for you to hold the shape steadier.</p>}
+
       <button className={`btn btn-block ${running ? 'btn-outline' : 'btn-primary'}`} style={{ marginTop: 12 }} disabled={!live} onClick={running ? sign.stop : sign.start}>
         {running ? <><CameraOff size={18} aria-hidden="true" /> Stop camera</> : <><Camera size={18} aria-hidden="true" /> {sign.status === 'error' ? 'Try again' : 'Start camera'}</>}
       </button>
@@ -85,8 +97,9 @@ export function SignCamera({ sign, signMode, setSignMode, word, setWord, autoSen
           <div className="row wrap" style={{ marginTop: 10, gap: 8 }}>
             <button className="btn btn-outline btn-sm" onClick={() => setWord((w) => `${w} `)} disabled={!word}>Space</button>
             <button className="btn btn-outline btn-sm" onClick={() => setWord((w) => w.slice(0, -1))} disabled={!word} aria-label="Delete last letter"><Delete size={15} aria-hidden="true" /></button>
+            <button className="btn btn-outline btn-sm" onClick={() => { setWord((w) => w.slice(0, -1)); sign.reject(); }} disabled={!word} title="Remove the last letter and sign it again">Retry letter</button>
             <button className="btn btn-ghost btn-sm" onClick={() => setWord('')} disabled={!word}>Clear</button>
-            <button className="btn btn-primary btn-sm" onClick={sendWord} disabled={!live || !word.trim()}>Send</button>
+            <button className="btn btn-primary btn-sm" onClick={sendWord} disabled={!live || !word.trim()}>Accept &amp; send</button>
           </div>
           <label className="check"><input type="checkbox" checked={autoSend} onChange={(e) => setAutoSend(e.target.checked)} /> Send automatically after a pause</label>
         </div>

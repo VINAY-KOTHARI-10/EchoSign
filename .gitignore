@@ -40,3 +40,4 @@ uploads/
 # Local code-dump helper and its output (never commit or ship these)
 /collect-code.js
 *_code.txt
+e2e/server.log

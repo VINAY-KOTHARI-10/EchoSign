@@ -116,6 +116,7 @@ model Classroom {
   members   ClassroomMember[]
 
   @@index([hostId])
+  @@index([active, createdAt])
   @@map("classrooms")
 }
 
@@ -130,9 +131,12 @@ model Caption {
   originalText String?
   editedAt     DateTime?
   editedById   String?
+  clientId     String?       // idempotency key from the sender, so a retried send never stores a second caption
   classroom   Classroom     @relation(fields: [classroomId], references: [id], onDelete: Cascade)
 
   @@index([classroomId, createdAt])
+  @@unique([classroomId, clientId])
+  @@index([classroomId, speakerId])
   @@map("captions")
 }
 
@@ -147,9 +151,12 @@ model ClassroomMember {
   totalSeconds  Int       @default(0)
   firstJoinedAt DateTime  @default(now())
   lastSeenAt    DateTime  @default(now())
+  lastLeftAt    DateTime?
+  reconnects    Int       @default(0)
   classroom     Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
 
   @@unique([classroomId, userId])
+  @@index([userId])
   @@map("classroom_members")
 }
 
@@ -170,4 +177,22 @@ enum MessageType {
   TEXT
   AUDIO
   SYSTEM
+}
+
+// Who changed what (role changes, class ended, user deleted...). Append-only, viewed by admins.
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actorName  String?
+  action     String
+  targetType String?
+  targetId   String?
+  meta       Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId])
+  @@index([action])
+  @@map("audit_logs")
 }

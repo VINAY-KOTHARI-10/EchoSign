@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 const KEY = 'lw_ui_prefs';
-const DEFAULTS = { highContrast: false, reduceMotion: false, theme: 'system' }; // theme: system | light | dark
+const DEFAULTS = { highContrast: false, reduceMotion: false, theme: 'system', announceCaptions: false }; // theme: system | light | dark
 
 const load = () => {
   try { return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(KEY)) || {}) }; } catch { return DEFAULTS; }

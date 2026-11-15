@@ -1,6 +1,6 @@
 // AdminShell - admin navigation shell
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Captions, Globe, LayoutDashboard, Mic, Users } from 'lucide-react';
+import { ArrowLeft, Captions, Globe, LayoutDashboard, Mic, ScrollText, Users } from 'lucide-react';
 import { Frame } from './AppShell';
 import { useAuth } from '../context/AuthContext';
 
@@ -10,6 +10,7 @@ const links = [
   { to: '/admin/sessions', label: 'Sessions', icon: Mic },
   { to: '/admin/classrooms', label: 'Classrooms', icon: Captions },
   { to: '/admin/languages', label: 'Languages', icon: Globe },
+  { to: '/admin/audit', label: 'Audit log', icon: ScrollText },
 ];
 
 export default function AdminShell() {

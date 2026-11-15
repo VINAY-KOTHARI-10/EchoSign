@@ -5,8 +5,14 @@
 const crypto = require('crypto');
 const { prisma } = require('../config/postgres');
 const { AppError } = require('../middleware/errorMiddleware');
-const { chatJSON } = require('../utils/groq');
+const { RateLimiterMemory } = require('rate-limiter-flexible');
+const { chatJSON, MODEL } = require('../utils/groq');
 const logger = require('../utils/logger');
+const { can } = require('../config/permissions');
+const audit = require('../Services/auditService');
+const codeGuess = require('../utils/codeGuess');
+const { summarizeLecture, askLecture } = require('../utils/lectureAi');
+const { toTxt, toSrt, toPrintHtml } = require('../utils/transcriptExport');
 
 // No 0/O/1/I so codes are easy to read aloud.
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -29,12 +35,20 @@ const publicClassroom = (c) => ({
   captionCount: c._count?.captions,
 });
 
-const findByCode = async (code) => {
+// A class code is an invitation, so repeated wrong codes are throttled per user (see utils/codeGuess).
+const findByCode = async (code, user) => {
+  if (user) {
+    const wait = await codeGuess.blockedFor(user.id);
+    if (wait) throw new AppError(`Too many wrong codes. Try again in ${Math.ceil(wait / 60)} minute(s).`, 429, 'TOO_MANY_ATTEMPTS');
+  }
   const classroom = await prisma.classroom.findUnique({
     where: { code: String(code || '').toUpperCase() },
     include,
   });
-  if (!classroom) throw new AppError('Classroom not found', 404);
+  if (!classroom) {
+    if (user) await codeGuess.recordMiss(user.id);
+    throw new AppError('Classroom not found', 404);
+  }
   return classroom;
 };
 
@@ -48,6 +62,34 @@ const roleOf = async (classroom, user) => {
   return m?.role === 'CAPTIONER' ? 'CAPTIONER' : 'STUDENT';
 };
 const canModerate = (role) => role === 'HOST' || role === 'CAPTIONER';
+
+// Reading a class's captions, notes or translations needs more than knowing its code: the person must be the host,
+// an admin, or someone who has joined the class. Returns the in-class role.
+const requireAccess = async (classroom, user) => {
+  const role = await roleOf(classroom, user);
+  if (role !== 'STUDENT') return role;
+  const member = await prisma.classroomMember.findUnique({
+    where: { classroomId_userId: { classroomId: classroom.id, userId: user.id } }, select: { id: true },
+  });
+  if (!member) throw new AppError('Join this class with its code to see its captions.', 403, 'NOT_A_MEMBER');
+  return role;
+};
+
+// Page through every caption (no arbitrary cap), for summaries and exports.
+const loadAllCaptions = async (classroomId, select, hardCap = 100000) => {
+  const out = [];
+  let cursor;
+  for (;;) {
+    const page = await prisma.caption.findMany({
+      where: { classroomId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 2000,
+      select: { id: true, ...select }, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
+    out.push(...page);
+    if (page.length < 2000 || out.length >= hardCap) break;
+    cursor = page[page.length - 1].id;
+  }
+  return out;
+};
 
 const cleanKeywords = (list) =>
   [...new Set((Array.isArray(list) ? list : []).map((k) => String(k).trim().slice(0, 40)).filter(Boolean))].slice(0, 30);
@@ -69,7 +111,7 @@ const cleanGestures = (list) => {
 const createClassroom = async (req, res, next) => {
   try {
     // Role hierarchy: admins and teachers host classes; members can only join them.
-    if (!['ADMIN', 'TEACHER'].includes(req.user.role)) {
+    if (!can(req.user, 'class.create')) {
       throw new AppError('Only teachers can start a class. Ask an administrator to give your account the Teacher role.', 403);
     }
     const title = String(req.body.title || '').trim().slice(0, 120);
@@ -87,6 +129,7 @@ const createClassroom = async (req, res, next) => {
           },
           include,
         });
+        audit.record({ actor: req.user, action: 'class.create', targetType: 'classroom', targetId: classroom.id, meta: { code: classroom.code, title }, ip: req.ip });
         return res.status(201).json({ success: true, data: { classroom: publicClassroom(classroom) } });
       } catch (err) {
         if (err.code !== 'P2002') throw err; // retry only on a code collision
@@ -112,18 +155,26 @@ const listMine = async (req, res, next) => {
 // GET /classrooms/:code
 const getClassroom = async (req, res, next) => {
   try {
-    const classroom = await findByCode(req.params.code);
+    const classroom = await findByCode(req.params.code, req.user);
     const role = await roleOf(classroom, req.user);
+    // Someone who only knows the code (has not joined yet) gets the basics; notes and gestures come after joining.
+    let isMember = role !== 'STUDENT';
+    if (!isMember) {
+      isMember = Boolean(await prisma.classroomMember.findUnique({
+        where: { classroomId_userId: { classroomId: classroom.id, userId: req.user.id } }, select: { id: true },
+      }));
+    }
     res.json({
       success: true,
       data: {
         classroom: {
           ...publicClassroom(classroom),
-          customGestures: classroom.customGestures || [],
-          summary: classroom.summary || null,
-          summaryAt: classroom.summaryAt,
+          ...(isMember
+            ? { customGestures: classroom.customGestures || [], summary: classroom.summary || null, summaryAt: classroom.summaryAt }
+            : { customGestures: [], summary: null }),
         },
         isHost: role === 'HOST',
+        isMember,
         role,
         canModerate: canModerate(role),
       },
@@ -134,7 +185,7 @@ const getClassroom = async (req, res, next) => {
 // PATCH /classrooms/:code   (host) title, keywords, schedule, custom gestures
 const updateClassroom = async (req, res, next) => {
   try {
-    const classroom = await findByCode(req.params.code);
+    const classroom = await findByCode(req.params.code, req.user);
     if ((await roleOf(classroom, req.user)) !== 'HOST') throw new AppError('Only the host can change this classroom', 403);
 
     const data = {};
@@ -159,24 +210,118 @@ const updateClassroom = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// GET /classrooms/:code/captions?limit=
+// GET /classrooms/:code/captions?limit=&after=<captionId>
+// Live view: the latest `limit` captions in order (hasMore says older ones exist; use /transcript for all of them),
+// or, with `after`, only what came after that caption (used to catch up after a reconnect).
 const getCaptions = async (req, res, next) => {
   try {
-    const classroom = await findByCode(req.params.code);
-    const limit = Math.min(2000, Math.max(1, parseInt(req.query.limit) || 300));
-    const captions = await prisma.caption.findMany({
-      where: { classroomId: classroom.id },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
+    const classroom = await findByCode(req.params.code, req.user);
+    await requireAccess(classroom, req.user);
+    const limit = Math.min(2000, Math.max(1, parseInt(req.query.limit, 10) || 300));
+    if (req.query.after) {
+      const anchor = await prisma.caption.findFirst({ where: { id: String(req.query.after), classroomId: classroom.id }, select: { createdAt: true, id: true } });
+      if (!anchor) return res.json({ success: true, data: { captions: [], resync: true } });
+      const captions = await prisma.caption.findMany({
+        where: { classroomId: classroom.id, OR: [{ createdAt: { gt: anchor.createdAt } }, { createdAt: anchor.createdAt, id: { gt: anchor.id } }] },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: limit,
+      });
+      return res.json({ success: true, data: { captions, resync: false } });
+    }
+    const newest = await prisma.caption.findMany({
+      where: { classroomId: classroom.id }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: limit + 1,
     });
-    res.json({ success: true, data: { captions: captions.reverse() } });
+    const hasMore = newest.length > limit;
+    res.json({ success: true, data: { captions: newest.slice(0, limit).reverse(), hasMore } });
+  } catch (err) { next(err); }
+};
+
+// POST /classrooms/:code/captions  { text, source, clientId }
+// Fallback for when the socket is down: same rules and the same idempotency key as the socket path, so a retried send is stored once.
+const postCaption = async (req, res, next) => {
+  try {
+    const classroom = await findByCode(req.params.code, req.user);
+    if (!classroom.active) throw new AppError('This class has ended', 409, 'ENDED');
+    await requireAccess(classroom, req.user);
+    const text = String(req.body.text || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+    if (!text) throw new AppError('Caption text is required', 400);
+    const source = ['SPEECH', 'SIGN', 'TEXT'].includes(req.body.source) ? req.body.source : 'TEXT';
+    const clientId = /^[A-Za-z0-9_-]{8,64}$/.test(String(req.body.clientId || '')) ? String(req.body.clientId) : null;
+    try {
+      const caption = await prisma.caption.create({
+        data: { classroomId: classroom.id, speakerId: req.user.id, speakerName: req.user.username, source, text, clientId },
+      });
+      req.app.get('io')?.to(`class:${classroom.id}`).emit('class:caption', caption);
+      return res.status(201).json({ success: true, data: { caption, duplicate: false } });
+    } catch (err) {
+      if (err.code === 'P2002' && clientId) {
+        const caption = await prisma.caption.findFirst({ where: { classroomId: classroom.id, clientId } });
+        return res.json({ success: true, data: { caption, duplicate: true } });
+      }
+      throw err;
+    }
+  } catch (err) { next(err); }
+};
+
+// GET /classrooms/:code/transcript?limit=&cursor=&q=&speaker=&source=&at=
+// The complete transcript, oldest first, in cursor pages. Filter by keyword (q), speaker (user id) and source, and
+// jump to a moment with `at` (seconds from the start of the lecture).
+const getTranscript = async (req, res, next) => {
+  try {
+    const classroom = await findByCode(req.params.code, req.user);
+    await requireAccess(classroom, req.user);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const where = { classroomId: classroom.id };
+    const q = String(req.query.q || '').trim().slice(0, 100);
+    if (q) where.text = { contains: q, mode: 'insensitive' };
+    if (req.query.speaker) where.speakerId = String(req.query.speaker);
+    if (['SPEECH', 'SIGN', 'TEXT'].includes(req.query.source)) where.source = req.query.source;
+
+    const first = await prisma.caption.findFirst({ where: { classroomId: classroom.id }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { createdAt: true } });
+    const startedAt = first ? first.createdAt : null;
+    const cursor = req.query.cursor ? String(req.query.cursor) : null;
+    const total = await prisma.caption.count({ where });
+    const at = Number(req.query.at);
+    const pageWhere = { ...where };
+    if (!cursor && startedAt && Number.isFinite(at) && at > 0) {
+      pageWhere.createdAt = { gte: new Date(new Date(startedAt).getTime() + at * 1000) };
+    }
+    const rows = await prisma.caption.findMany({
+      where: pageWhere, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
+    const hasMore = rows.length > limit;
+    const captions = rows.slice(0, limit);
+    res.json({ success: true, data: { captions, nextCursor: hasMore ? captions[captions.length - 1].id : null, total, startedAt } });
+  } catch (err) { next(err); }
+};
+
+// GET /classrooms/:code/export?format=txt|srt|html
+const exportTranscript = async (req, res, next) => {
+  try {
+    const classroom = await findByCode(req.params.code, req.user);
+    await requireAccess(classroom, req.user);
+    const captions = await loadAllCaptions(classroom.id, { speakerName: true, text: true, source: true, createdAt: true });
+    const format = String(req.query.format || 'txt').toLowerCase();
+    const safeName = classroom.title.replace(/[^A-Za-z0-9 _-]/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || classroom.code;
+    if (format === 'srt') {
+      res.setHeader('Content-Type', 'application/x-subrip; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}.srt"`);
+      return res.send(toSrt(captions));
+    }
+    if (format === 'html' || format === 'print') {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.send(toPrintHtml(classroom, captions, classroom.summary));
+    }
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}.txt"`);
+    return res.send(toTxt(classroom, captions));
   } catch (err) { next(err); }
 };
 
 // PATCH /classrooms/:code/captions/:id   (host, captioner, or the person who spoke it)
 const editCaption = async (req, res, next) => {
   try {
-    const classroom = await findByCode(req.params.code);
+    const classroom = await findByCode(req.params.code, req.user);
     const text = String(req.body.text || '').replace(/\s+/g, ' ').trim().slice(0, 500);
     if (!text) throw new AppError('Caption text is required', 400);
 
@@ -197,14 +342,17 @@ const editCaption = async (req, res, next) => {
 // POST /classrooms/:code/end   (host or admin)
 const endClassroom = async (req, res, next) => {
   try {
-    const classroom = await findByCode(req.params.code);
+    const classroom = await findByCode(req.params.code, req.user);
     if ((await roleOf(classroom, req.user)) !== 'HOST') throw new AppError('Only the host can end this classroom', 403);
     const updated = await prisma.classroom.update({
       where: { id: classroom.id },
       data: { active: false, endedAt: classroom.endedAt || new Date() },
       include,
     });
-    req.app.get('io')?.to(`class:${classroom.id}`).emit('class:ended', { code: classroom.code });
+    const io = req.app.get('io');
+    io?.to(`class:${classroom.id}`).emit('class:ended', { code: classroom.code });
+    if (io?.finalizeClass) await io.finalizeClass(classroom.id); // count the remaining attendance time and release the room
+    audit.record({ actor: req.user, action: 'class.end', targetType: 'classroom', targetId: classroom.id, meta: { code: classroom.code }, ip: req.ip });
     res.json({ success: true, data: { classroom: publicClassroom(updated) } });
   } catch (err) { next(err); }
 };
@@ -212,108 +360,122 @@ const endClassroom = async (req, res, next) => {
 // POST /classrooms/:code/reopen   (host) – same code and link, so a recurring class never needs a new invite
 const reopenClassroom = async (req, res, next) => {
   try {
-    const classroom = await findByCode(req.params.code);
+    const classroom = await findByCode(req.params.code, req.user);
     if ((await roleOf(classroom, req.user)) !== 'HOST') throw new AppError('Only the host can reopen this classroom', 403);
     const updated = await prisma.classroom.update({
       where: { id: classroom.id }, data: { active: true, endedAt: null, scheduledAt: null }, include,
     });
+    audit.record({ actor: req.user, action: 'class.reopen', targetType: 'classroom', targetId: classroom.id, meta: { code: classroom.code }, ip: req.ip });
     res.json({ success: true, data: { classroom: publicClassroom(updated) } });
   } catch (err) { next(err); }
 };
 
 // ── Translation ──────────────────────────────────────────────────────────────
+// Batched, cached and de-duplicated: the same caption is translated once even if many students ask at the same
+// moment. A caption the AI could not translate comes back as null (never cached), so the client can retry it.
 const translationCache = new Map(); // `${target}|${text}` -> translation
-const translateHits = new Map();    // userId -> [timestamps] (simple per-user rate limit)
+const inflight = new Map();         // same key -> Promise<string|null> while a request is running
+const translateLimiter = new RateLimiterMemory({ keyPrefix: 'translate', points: 40, duration: 60 });
+const askLimiter = new RateLimiterMemory({ keyPrefix: 'ask', points: 10, duration: 60 });
+const chatOrNull = () => (process.env.GROQ_API_KEY ? chatJSON : null);
+const tKey = (target, text) => `${target}|${text}`;
 
-const underRateLimit = (userId, max = 40, windowMs = 60000) => {
-  const now = Date.now();
-  const hits = (translateHits.get(userId) || []).filter((t) => now - t < windowMs);
-  hits.push(now); translateHits.set(userId, hits);
-  return hits.length <= max;
+const fetchTranslations = async (target, texts) => {
+  const ask = async () => chatJSON(
+    'You translate classroom captions. Reply ONLY with JSON: {"translations": ["..."]} — one string per input, same order, no commentary.',
+    `Translate each item into ${target}.\n${JSON.stringify(texts)}`,
+    { maxTokens: 1500 },
+  );
+  let result;
+  try { result = await ask(); } catch (err) { logger.warn(`Translation failed once, retrying: ${err.message}`); result = await ask(); }
+  if (!result) throw new AppError('Translation is not configured on this server', 503);
+  const list = Array.isArray(result.translations) ? result.translations : [];
+  return texts.map((_, i) => (typeof list[i] === 'string' && list[i].trim() ? list[i] : null));
 };
 
 // POST /classrooms/:code/translate  { texts: string[], target: 'Hindi' | 'hi' }
 const translate = async (req, res, next) => {
   try {
-    await findByCode(req.params.code);
+    const classroom = await findByCode(req.params.code, req.user);
+    await requireAccess(classroom, req.user);
     const target = String(req.body.target || '').trim().slice(0, 40);
     const texts = (Array.isArray(req.body.texts) ? req.body.texts : []).slice(0, 20).map((t) => String(t).slice(0, 500));
     if (!target || texts.length === 0) throw new AppError('target and texts are required', 400);
-    if (!underRateLimit(req.user.id)) throw new AppError('Too many translation requests, slow down', 429);
+    try { await translateLimiter.consume(req.user.id); } catch { throw new AppError('Too many translation requests, slow down', 429); }
 
-    const out = texts.map((t) => translationCache.get(`${target}|${t}`) ?? null);
-    const missing = texts.map((t, i) => (out[i] === null ? i : -1)).filter((i) => i >= 0);
-
-    if (missing.length) {
-      const result = await chatJSON(
-        'You translate classroom captions. Reply ONLY with JSON: {"translations": ["..."]} — one string per input, same order, no commentary.',
-        `Translate each item into ${target}.\n${JSON.stringify(missing.map((i) => texts[i]))}`,
-        { maxTokens: 1500 },
-      );
-      if (!result) throw new AppError('Translation is not configured on this server', 503);
-      const list = Array.isArray(result.translations) ? result.translations : [];
-      missing.forEach((idx, k) => {
-        const t = typeof list[k] === 'string' ? list[k] : texts[idx];
-        out[idx] = t;
-        translationCache.set(`${target}|${texts[idx]}`, t);
-      });
-      if (translationCache.size > 5000) translationCache.clear();
+    const unique = [...new Set(texts)];
+    const waiting = [];
+    const toFetch = [];
+    unique.forEach((t) => {
+      const key = tKey(target, t);
+      if (translationCache.has(key)) return;
+      if (inflight.has(key)) waiting.push(inflight.get(key)); else toFetch.push(t);
+    });
+    if (toFetch.length) {
+      const batch = fetchTranslations(target, toFetch);
+      toFetch.forEach((t, i) => inflight.set(tKey(target, t), batch.then((list) => list[i]).catch(() => null)));
+      try {
+        const list = await batch;
+        list.forEach((tr, i) => { if (tr) translationCache.set(tKey(target, toFetch[i]), tr); });
+        if (translationCache.size > 5000) translationCache.clear();
+      } finally { toFetch.forEach((t) => inflight.delete(tKey(target, t))); }
     }
-    res.json({ success: true, data: { translations: out } });
+    await Promise.all(waiting);
+    const out = texts.map((t) => translationCache.get(tKey(target, t)) ?? null);
+    res.json({ success: true, data: { translations: out, failed: out.map((v, i) => (v === null ? i : -1)).filter((i) => i >= 0) } });
   } catch (err) { next(err); }
 };
 
-// ── AI lecture summary ───────────────────────────────────────────────────────
-const STOP = new Set('the a an and or but of to in on for with is are was were be been it this that as at by from we you i they he she not do does did have has had will would can could should so if then than also about into over just what which who how when where why there their our your its them these those'.split(' '));
-
-// Used when no Groq key is set, so the feature still produces something useful.
-const basicSummary = (lines) => {
-  const text = lines.join(' ');
-  const sentences = text.split(/(?<=[.!?])\s+/).filter((s) => s.split(' ').length >= 5);
-  const freq = {};
-  text.toLowerCase().match(/[a-z][a-z'-]{3,}/g)?.forEach((w) => { if (!STOP.has(w)) freq[w] = (freq[w] || 0) + 1; });
-  const terms = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([term]) => ({ term, definition: '' }));
-  const step = Math.max(1, Math.floor(sentences.length / 6));
-  return { notes: sentences.filter((_, i) => i % step === 0).slice(0, 6), keyTerms: terms, quiz: [], provider: 'basic' };
-};
-
+// ── AI lecture notes ─────────────────────────────────────────────────────────
 // POST /classrooms/:code/summary   (host or captioner)
+// Reads the WHOLE transcript (in chunks when it is long), stores the result with how it was made, and falls back to a
+// clearly labelled non-AI summary when the AI service is unavailable.
 const generateSummary = async (req, res, next) => {
   try {
-    const classroom = await findByCode(req.params.code);
+    const classroom = await findByCode(req.params.code, req.user);
     if (!canModerate(await roleOf(classroom, req.user))) throw new AppError('Only the host or a captioner can generate a summary', 403);
 
-    const captions = await prisma.caption.findMany({
-      where: { classroomId: classroom.id }, orderBy: { createdAt: 'asc' }, take: 2000,
-      select: { speakerName: true, text: true },
-    });
+    const captions = await loadAllCaptions(classroom.id, { speakerName: true, text: true, createdAt: true });
     if (captions.length < 3) throw new AppError('Not enough captions to summarise yet', 400);
-    const lines = captions.map((c) => c.text);
-    const transcript = captions.map((c) => `${c.speakerName}: ${c.text}`).join('\n').slice(0, 14000);
 
-    let summary = null;
-    try {
-      const ai = await chatJSON(
-        'You write study material from a classroom transcript. Reply ONLY with JSON: {"notes": [string, ...6-10 concise bullet points], "keyTerms": [{"term": string, "definition": string}, ...up to 8], "quiz": [{"question": string, "options": [4 strings], "answerIndex": 0-3}, ...5 questions]}. Use only facts from the transcript.',
-        `Class: ${classroom.title}\nKeywords: ${(classroom.keywords || []).join(', ')}\n\nTranscript:\n${transcript}`,
-        { maxTokens: 2200, temperature: 0.3 },
-      );
-      if (ai && Array.isArray(ai.notes)) {
-        summary = {
-          notes: ai.notes.map(String).slice(0, 12),
-          keyTerms: (ai.keyTerms || []).slice(0, 10).map((t) => ({ term: String(t.term || ''), definition: String(t.definition || '') })).filter((t) => t.term),
-          quiz: (ai.quiz || []).slice(0, 8)
-            .filter((q) => q && q.question && Array.isArray(q.options) && q.options.length === 4 && Number.isInteger(q.answerIndex) && q.answerIndex >= 0 && q.answerIndex <= 3)
-            .map((q) => ({ question: String(q.question), options: q.options.map(String), answerIndex: q.answerIndex })),
-          provider: 'groq',
-        };
-      }
-    } catch (err) { logger.warn(`Summary via Groq failed, using basic summary: ${err.message}`); }
-    if (!summary) summary = basicSummary(lines);
-
-    const stored = { ...summary, generatedAt: new Date().toISOString() };
+    const result = await summarizeLecture({ classroom, captions, chat: chatOrNull() });
+    const stored = { ...result, model: result.provider === 'groq' ? MODEL : null, generatedAt: new Date().toISOString(), generatedBy: req.user.username };
     await prisma.classroom.update({ where: { id: classroom.id }, data: { summary: stored, summaryAt: new Date() } });
     res.json({ success: true, data: { summary: stored } });
+  } catch (err) { next(err); }
+};
+
+// GET /classrooms/:code/summary  → saved notes, and whether the transcript has grown since they were made
+const getSummary = async (req, res, next) => {
+  try {
+    const classroom = await findByCode(req.params.code, req.user);
+    await requireAccess(classroom, req.user);
+    const count = await prisma.caption.count({ where: { classroomId: classroom.id } });
+    const summary = classroom.summary || null;
+    res.json({
+      success: true,
+      data: {
+        summary, captionCount: count,
+        stale: Boolean(summary && summary.captionCount !== undefined && count > summary.captionCount),
+        classroom: { code: classroom.code, title: classroom.title, teacher: classroom.host?.username, active: classroom.active, createdAt: classroom.createdAt },
+      },
+    });
+  } catch (err) { next(err); }
+};
+
+// POST /classrooms/:code/ask  { question }
+// Answers come from this class's transcript (and saved notes) only, with timestamped references.
+const askAboutLecture = async (req, res, next) => {
+  try {
+    const classroom = await findByCode(req.params.code, req.user);
+    await requireAccess(classroom, req.user);
+    const question = String(req.body.question || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+    if (question.length < 3) throw new AppError('Type a question about the lecture', 400);
+    try { await askLimiter.consume(req.user.id); } catch { throw new AppError('You are asking too fast. Wait a few seconds.', 429); }
+    const captions = await loadAllCaptions(classroom.id, { speakerName: true, text: true, createdAt: true }, 20000);
+    if (!captions.length) throw new AppError('This lecture has no captions yet', 400);
+    const answer = await askLecture({ classroom, captions, notes: classroom.summary, question, chat: chatOrNull() });
+    res.json({ success: true, data: answer });
   } catch (err) { next(err); }
 };
 
@@ -323,14 +485,11 @@ const SPEAKING_WPM = 150; // words per minute used to estimate speaking time
 // GET /classrooms/:code/insights
 const getInsights = async (req, res, next) => {
   try {
-    const classroom = await findByCode(req.params.code);
+    const classroom = await findByCode(req.params.code, req.user);
     if (!canModerate(await roleOf(classroom, req.user))) throw new AppError('Only the host or a captioner can view insights', 403);
 
     const [captions, members] = await Promise.all([
-      prisma.caption.findMany({
-        where: { classroomId: classroom.id }, orderBy: { createdAt: 'asc' },
-        select: { speakerId: true, speakerName: true, source: true, text: true, createdAt: true, editedAt: true },
-      }),
+      loadAllCaptions(classroom.id, { speakerId: true, speakerName: true, source: true, text: true, createdAt: true, editedAt: true }),
       prisma.classroomMember.findMany({ where: { classroomId: classroom.id }, orderBy: { firstJoinedAt: 'asc' } }),
     ]);
 
@@ -363,8 +522,9 @@ const getInsights = async (req, res, next) => {
         attendance: members.map((m) => ({
           userId: m.userId, username: m.username,
           role: m.userId === classroom.hostId ? 'HOST' : m.role,
-          joins: m.joins, minutes: Math.round(m.totalSeconds / 6) / 10,
-          firstJoinedAt: m.firstJoinedAt, lastSeenAt: m.lastSeenAt,
+          joins: m.joins, reconnects: m.reconnects, minutes: Math.round(m.totalSeconds / 6) / 10,
+          firstJoinedAt: m.firstJoinedAt, lastSeenAt: m.lastSeenAt, lastLeftAt: m.lastLeftAt,
+          present: Boolean(classroom.active && (!m.lastLeftAt || new Date(m.lastLeftAt) < new Date(m.lastSeenAt))),
         })),
       },
     });
@@ -374,7 +534,7 @@ const getInsights = async (req, res, next) => {
 // PUT /classrooms/:code/members/:userId/role  { role: 'CAPTIONER' | 'STUDENT' }   (host)
 const setMemberRole = async (req, res, next) => {
   try {
-    const classroom = await findByCode(req.params.code);
+    const classroom = await findByCode(req.params.code, req.user);
     if ((await roleOf(classroom, req.user)) !== 'HOST') throw new AppError('Only the host can change roles', 403);
     const role = req.body.role;
     if (!['CAPTIONER', 'STUDENT'].includes(role)) throw new AppError('Invalid role', 400);
@@ -385,13 +545,98 @@ const setMemberRole = async (req, res, next) => {
     });
     if (!member) throw new AppError('That person has not joined this class', 404);
     const updated = await prisma.classroomMember.update({ where: { id: member.id }, data: { role } });
+    audit.record({ actor: req.user, action: 'class.member_role', targetType: 'user', targetId: updated.userId, meta: { code: classroom.code, role }, ip: req.ip });
     req.app.get('io')?.to(`class:${classroom.id}`).emit('class:role', { userId: updated.userId, role: updated.role });
     res.json({ success: true, data: { userId: updated.userId, role: updated.role } });
   } catch (err) { next(err); }
 };
 
+// ── Dashboards ───────────────────────────────────────────────────────────────
+const minutesBetween = (a, b) => Math.max(0, Math.round((new Date(b) - new Date(a)) / 60000));
+
+// GET /classrooms/stats   (teacher / admin) real numbers for the classes this person hosts
+const teacherStats = async (req, res, next) => {
+  try {
+    if (!can(req.user, 'analytics.class')) throw new AppError('Only teachers can see class analytics', 403);
+    const rooms = await prisma.classroom.findMany({
+      where: { hostId: req.user.id }, orderBy: { createdAt: 'desc' }, take: 500,
+      select: { id: true, code: true, title: true, active: true, createdAt: true, endedAt: true, keywords: true, summaryAt: true, hostId: true, _count: { select: { captions: true } } },
+    });
+    const ids = rooms.map((r) => r.id);
+    const [sources, members] = ids.length ? await Promise.all([
+      prisma.caption.groupBy({ by: ['source'], where: { classroomId: { in: ids } }, _count: { _all: true } }),
+      prisma.classroomMember.findMany({ where: { classroomId: { in: ids } }, select: { classroomId: true, userId: true, totalSeconds: true } }),
+    ]) : [[], []];
+
+    const hostId = req.user.id;
+    const attendees = new Map(); // classroomId -> { count, seconds }
+    members.filter((m) => m.userId !== hostId).forEach((m) => {
+      const a = attendees.get(m.classroomId) || { count: 0, seconds: 0 };
+      a.count += 1; a.seconds += m.totalSeconds; attendees.set(m.classroomId, a);
+    });
+    const bySource = { SPEECH: 0, SIGN: 0, TEXT: 0 };
+    sources.forEach((g) => { bySource[g.source] = g._count._all; });
+
+    const topics = {};
+    rooms.forEach((r) => (r.keywords || []).forEach((k) => { const key = k.toLowerCase(); topics[key] = (topics[key] || 0) + 1; }));
+    const ended = rooms.filter((r) => !r.active && r.endedAt);
+    const totalAttendance = [...attendees.values()].reduce((n, a) => n + a.count, 0);
+
+    res.json({
+      success: true,
+      data: {
+        totals: {
+          classrooms: rooms.length,
+          active: rooms.filter((r) => r.active).length,
+          completed: ended.length,
+          captions: rooms.reduce((n, r) => n + r._count.captions, 0),
+          attendance: totalAttendance,
+          lectureMinutes: ended.reduce((n, r) => n + minutesBetween(r.createdAt, r.endedAt), 0),
+          summaries: rooms.filter((r) => r.summaryAt).length,
+        },
+        bySource,
+        topics: Object.entries(topics).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([topic, classes]) => ({ topic, classes })),
+        recent: rooms.slice(0, 10).map((r) => ({
+          code: r.code, title: r.title, active: r.active, createdAt: r.createdAt, endedAt: r.endedAt,
+          captions: r._count.captions, attendees: (attendees.get(r.id) || { count: 0 }).count,
+          minutes: r.endedAt ? minutesBetween(r.createdAt, r.endedAt) : null, hasNotes: Boolean(r.summaryAt),
+        })),
+      },
+    });
+  } catch (err) { next(err); }
+};
+
+// GET /classrooms/attended?page=   classes this person has joined (a student's lecture library)
+const attended = async (req, res, next) => {
+  try {
+    const limit = 20;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const where = { userId: req.user.id, classroom: { hostId: { not: req.user.id } } };
+    const [rows, total] = await Promise.all([
+      prisma.classroomMember.findMany({
+        where, orderBy: { lastSeenAt: 'desc' }, skip: (page - 1) * limit, take: limit,
+        include: { classroom: { select: { code: true, title: true, active: true, createdAt: true, endedAt: true, summary: true, summaryAt: true, host: { select: { username: true } }, _count: { select: { captions: true } } } } },
+      }),
+      prisma.classroomMember.count({ where }),
+    ]);
+    res.json({
+      success: true,
+      data: {
+        classes: rows.map((m) => ({
+          code: m.classroom.code, title: m.classroom.title, active: m.classroom.active, teacher: m.classroom.host.username,
+          date: m.classroom.createdAt, endedAt: m.classroom.endedAt, captions: m.classroom._count.captions,
+          minutesAttended: Math.round(m.totalSeconds / 60), hasNotes: Boolean(m.classroom.summaryAt),
+          noteCount: m.classroom.summary && m.classroom.summary.notes ? m.classroom.summary.notes.length : 0,
+          quizCount: m.classroom.summary && m.classroom.summary.quiz ? m.classroom.summary.quiz.length : 0,
+        })),
+        pagination: { page, pages: Math.max(1, Math.ceil(total / limit)), total },
+      },
+    });
+  } catch (err) { next(err); }
+};
+
 module.exports = {
-  createClassroom, listMine, getClassroom, updateClassroom, getCaptions, editCaption,
-  endClassroom, reopenClassroom, translate, generateSummary, getInsights, setMemberRole,
-  publicClassroom, roleOf, canModerate,
+  createClassroom, listMine, getClassroom, updateClassroom, getCaptions, postCaption, getTranscript, exportTranscript, editCaption,
+  endClassroom, reopenClassroom, translate, generateSummary, getSummary, askAboutLecture, getInsights, setMemberRole,
+  teacherStats, attended, publicClassroom, roleOf, canModerate, requireAccess,
 };

@@ -6,6 +6,7 @@
 const { verifyAccessToken } = require('../utils/jwtHelper');
 const { prisma } = require('../config/postgres');
 const logger = require('../utils/logger');
+const { can } = require('../config/permissions');
 
 /**
  * Authenticate JWT token
@@ -20,10 +21,8 @@ const authenticate = async (req, res, next) => {
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.split(' ')[1];
     }
-    // Fallback: check cookie
-    else if (req.cookies?.accessToken) {
-      token = req.cookies.accessToken;
-    }
+    // Access tokens are accepted from the Authorization header only. A cookie would be sent by the browser
+    // automatically on cross-site requests (CSRF); the header cannot be forged by another site.
 
     if (!token) {
       return res.status(401).json({
@@ -106,6 +105,18 @@ const authorize = (...roles) => {
 };
 
 /**
+ * Permission-based guard: requirePermission('users.manage'). The rules live in config/permissions.js.
+ */
+const requirePermission = (permission) => (req, res, next) => {
+  if (!req.user) return res.status(401).json({ success: false, error: 'Not authenticated', code: 'UNAUTHENTICATED' });
+  if (!can(req.user, permission)) {
+    logger.warn(`RBAC: ${req.user.id} (${req.user.role}) denied ${permission}`);
+    return res.status(403).json({ success: false, error: 'You do not have permission to do this', code: 'FORBIDDEN', permission, current: req.user.role });
+  }
+  next();
+};
+
+/**
  * Optional auth - attach user if token present, don't fail if not
  */
 const optionalAuth = async (req, res, next) => {
@@ -113,13 +124,6 @@ const optionalAuth = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
-      const decoded = await verifyAccessToken(token);
-      req.user = await prisma.user.findUnique({
-        where: { id: decoded.id },
-        select: { id: true, email: true, username: true, role: true },
-      });
-    } else if (req.cookies?.accessToken) {
-      const token = req.cookies.accessToken;
       const decoded = await verifyAccessToken(token);
       req.user = await prisma.user.findUnique({
         where: { id: decoded.id },
@@ -133,4 +137,4 @@ const optionalAuth = async (req, res, next) => {
   next();
 };
 
-module.exports = { authenticate, authorize, optionalAuth };
+module.exports = { authenticate, authorize, requirePermission, optionalAuth };

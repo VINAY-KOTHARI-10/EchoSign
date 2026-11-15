@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Printer, Sparkles } from 'lucide-react';
+import { AlertTriangle, Printer, Sparkles } from 'lucide-react';
 import * as api from '../../api';
 import { printHtml } from '../../lib/captions';
 import { useToast } from '../../context/ToastContext';
+import { StatusBadge } from '../ui';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -25,6 +26,7 @@ function Quiz({ quiz }) {
           </div>
         </div>
       ))}
+      {quiz.map((q, i) => (picked[i] !== undefined && q.explanation ? <p key={`e${i}`} className="muted" style={{ fontSize: 13 }}><b>{i + 1}.</b> {q.explanation}</p> : null))}
       {answered === quiz.length && <div className="chip chip-go" style={{ alignSelf: 'flex-start' }}>You scored {correct} / {quiz.length}</div>}
     </div>
   );
@@ -59,9 +61,13 @@ export default function SummaryPanel({ room, setRoom, canModerate, captionCount 
           <div>
             <h2 className="card-title" style={{ marginBottom: 2 }}><Sparkles size={16} style={{ display: 'inline', verticalAlign: -2 }} /> Lecture summary</h2>
             <p className="muted" style={{ fontSize: 14 }}>
-              {s ? `Generated ${new Date(s.generatedAt).toLocaleString()}${s.provider === 'basic' ? ' — basic summary (AI is not available)' : ''}`
+              {s ? `Generated ${new Date(s.generatedAt).toLocaleString()}${s.generatedBy ? ` by ${s.generatedBy}` : ''}`
                 : 'Notes, key terms and a short quiz made from the class transcript.'}
             </p>
+            {s && (s.provider === 'basic'
+              ? <p style={{ marginTop: 6 }}><StatusBadge status="warn">Basic summary, not AI</StatusBadge> <span className="muted" style={{ fontSize: 13 }}>{s.fallbackReason || 'The AI service was unavailable.'} Try again later for full notes and a quiz.</span></p>
+              : <p style={{ marginTop: 6 }}><StatusBadge status="info">AI-generated from the transcript</StatusBadge> <span className="muted" style={{ fontSize: 13 }}>{s.captionCount} captions{s.chunks > 1 ? `, read in ${s.chunks} parts` : ''}. Check important facts against the lecture.</span></p>)}
+            {s && s.captionCount !== undefined && captionCount > s.captionCount && <p className="notice" style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}><AlertTriangle size={16} aria-hidden="true" /> The class has {captionCount - s.captionCount} new captions since these notes were made.</p>}
           </div>
           <div className="row" style={{ gap: 8 }}>
             {s && <button className="btn btn-outline btn-sm" onClick={print}><Printer size={15} /> PDF / Print</button>}
@@ -76,10 +82,12 @@ export default function SummaryPanel({ room, setRoom, canModerate, captionCount 
         <>
           <div className="card"><h2 className="card-title">Notes</h2>
             <ul className="notes">{s.notes.map((n, i) => <li key={i}>{n}</li>)}</ul></div>
+          {s.takeaways?.length > 0 && <div className="card"><h2 className="card-title">Main takeaways</h2><ul className="notes">{s.takeaways.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
           {s.keyTerms.length > 0 && (
             <div className="card"><h2 className="card-title">Key terms</h2>
               <dl className="terms">{s.keyTerms.map((t, i) => <div key={i}><dt>{t.term}</dt><dd>{t.definition || '—'}</dd></div>)}</dl></div>
           )}
+          {s.revision?.length > 0 && <div className="card"><h2 className="card-title">Revision points</h2><ul className="notes">{s.revision.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
           {s.quiz.length > 0 && <div className="card"><h2 className="card-title">Check your understanding</h2><Quiz quiz={s.quiz} /></div>}
         </>
       )}

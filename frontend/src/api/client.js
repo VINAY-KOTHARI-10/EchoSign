@@ -8,7 +8,10 @@ export const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || (/^https?:/.test(AP
 
 let accessToken = null;
 
-export const setToken = (t) => { accessToken = t || null; };
+const tokenListeners = new Set();
+export const setToken = (t) => { accessToken = t || null; tokenListeners.forEach((fn) => fn(accessToken)); };
+// Lets long-lived connections (sockets) pick up a refreshed access token without reconnecting.
+export const onTokenChange = (fn) => { tokenListeners.add(fn); return () => tokenListeners.delete(fn); };
 export const getToken = () => accessToken;
 
 const parse = async (res) => {
@@ -22,7 +25,12 @@ const parse = async (res) => {
   return data;
 };
 
+// True when the last refresh failed because the network was unreachable (as opposed to the session being invalid).
+let lastRefreshWasOffline = false;
+export const refreshFailedOffline = () => lastRefreshWasOffline;
+
 export const refreshAccessToken = async () => {
+  lastRefreshWasOffline = false;
   try {
     const res = await fetch(`${API_URL}/auth/refresh`, { method: 'POST', credentials: 'include' });
     const data = await res.json().catch(() => ({}));
@@ -30,7 +38,7 @@ export const refreshAccessToken = async () => {
       setToken(data.data.accessToken);
       return true;
     }
-  } catch { /* offline or no cookie */ }
+  } catch { lastRefreshWasOffline = true; /* offline or server unreachable */ }
   return false;
 };
 
@@ -57,4 +65,13 @@ export const qs = (params = {}) => {
     Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ''),
   ).toString();
   return s ? `?${s}` : '';
+};
+
+// Download a file the API protects with the access token (exports). Returns { blob, filename, type }.
+export const download = async (path, retried = false) => {
+  const res = await fetch(`${API_URL}${path}`, { credentials: 'include', headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });
+  if (res.status === 401 && !retried && (await refreshAccessToken())) return download(path, true);
+  if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.error || `Download failed (${res.status})`); }
+  const cd = res.headers.get('content-disposition') || '';
+  return { blob: await res.blob(), filename: (cd.match(/filename="([^"]+)"/) || [])[1] || 'download', type: res.headers.get('content-type') || '' };
 };

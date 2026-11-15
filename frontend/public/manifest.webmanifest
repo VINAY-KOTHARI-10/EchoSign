@@ -1,0 +1,22 @@
+{
+  "name": "EchoSign: live captions for every classroom",
+  "short_name": "EchoSign",
+  "description": "Real-time speech and sign captions, lecture notes and transcripts for deaf and hard-of-hearing students.",
+  "id": "/",
+  "start_url": "/classroom",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f7f5ff",
+  "theme_color": "#5b3df5",
+  "categories": ["education", "accessibility"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Join a class", "url": "/classroom", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "My lectures", "url": "/library", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
