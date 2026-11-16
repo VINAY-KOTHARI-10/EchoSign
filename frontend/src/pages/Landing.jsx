@@ -1,90 +1,80 @@
-// Landing - hero section with floating cards and waveform
+import { ArrowRight } from 'lucide-react';
+// Landing: what EchoSign is, how a class runs, who it is for, and how it adapts to the reader.
 import { Link } from 'react-router-dom';
-import { ArrowRight, Captions, CheckCircle2, Globe, Hand, Keyboard, Languages, Mic, MonitorSmartphone, Sparkles, Users } from 'lucide-react';
+
 import Logo from '../components/Logo';
 import ThemeToggle from '../components/ThemeToggle';
-import Waveform from '../components/Waveform';
 import { useAuth } from '../context/AuthContext';
 
-const highlights = [
-  { icon: Captions, label: 'Real-time captions' },
-  { icon: Hand, label: 'Sign recognition' },
-  { icon: Globe, label: 'Multi-language' },
-  { icon: Users, label: 'Inclusive learning' },
-];
-
-const features = [
-  { icon: Mic, title: 'Speech to text', body: 'The teacher speaks and captions appear on every student’s screen within moments, in 12 languages.', size: 'wide', art: 'wave' },
-  { icon: Hand, title: 'Sign to text', body: 'Fingerspell with ASL letters or use supported gestures. Recognition runs in your browser, so video never leaves the device.', size: 'tall', art: 'sign' },
-  { icon: Globe, title: 'Caption translation', body: 'Students can read captions translated into their own language, shown under the original.' },
-  { icon: Keyboard, title: 'Type or tap', body: 'Anyone can type a caption or tap a quick phrase, and raise a hand to ask a question.' },
-  { icon: Sparkles, title: 'Notes after class', body: 'Generate lecture notes, key terms and a short quiz from the transcript, and export subtitles or a PDF.', size: 'wide' },
-  { icon: MonitorSmartphone, title: 'Comfortable to read', body: 'Adjust caption size, font, spacing, colours and reading pace, with light, dark and high-contrast modes.' },
+const facts = [
+  ['One transcript', 'Speech, sign and typed messages land in the same live caption stream and the same saved transcript.'],
+  ['Private by design', 'Sign recognition runs in your browser. Camera video never leaves the device.'],
+  ['12 languages', 'Speak in one language; each student can read the captions translated into theirs.'],
+  ['Any device', 'Works in a modern browser on laptops, tablets and phones. No install needed.'],
 ];
 
 const steps = [
-  ['Start or join', 'A teacher starts a class and shares a 6-character code. Students join from any device.'],
-  ['Caption everything', 'Speech, signs and typed messages become live captions, saved to a searchable transcript.'],
-  ['Review together', 'Download the transcript, subtitles and AI-generated notes after class.'],
+  ['Start or join', 'A teacher starts a class and shares a six-character code. Students join from any device.'],
+  ['Caption everything', 'Speech, signs and typed messages become live captions for the whole room.'],
+  ['Review afterwards', 'Download the transcript or subtitles, and generate notes, key terms and a quiz.'],
 ];
 
-const a11y = [
-  'Full keyboard navigation with visible focus',
-  'Adjustable caption size, font, spacing and colours',
-  'High-contrast and reduced-motion modes',
-  'Status never relies on colour alone',
-  'Works on phones, tablets and desktops',
+const teachers = [
+  'Start a class in seconds and share a code or link',
+  'Captions appear for every student as you speak',
+  'See who attended and for how long',
+  'Correct a caption; the original text is kept',
+  'Generate notes, key terms and a quiz from the transcript',
+  'Export TXT, SRT subtitles or a printable PDF',
 ];
 
-function CaptionDemo() {
+const students = [
+  'Join with the code your teacher shares',
+  'Read along with your own size, font, spacing and colours',
+  'Translate captions into your language',
+  'Raise a hand or type a question without interrupting',
+  'Revisit the full transcript and notes after class',
+  'Practise pronunciation and fingerspelling in Practice and Sign Lab',
+];
+
+const comforts = ['Caption size', 'Font: Lexend, Atkinson Hyperlegible, system', 'Letter and line spacing', 'Reading pace', 'Light, dark and high contrast', 'Reduced motion'];
+
+function ClassPreview() {
   return (
-    <div className="hero-art">
-      <figure className="demo glass" aria-label="Example of the live caption view">
-        <div className="demo-bar"><span className="badge badge-live"><span className="pulse-dot" aria-hidden="true" /> LIVE</span><span className="muted">Physics · Newton’s laws</span></div>
-        <div className="demo-captions" aria-hidden="true">
-          <p className="demo-who">Teacher</p>
-          <p>An object in motion stays in motion unless acted upon by an external force.</p>
-          <p className="demo-who">Student · typed</p>
-          <p>Could you give an example?</p>
-        </div>
-        <div className="demo-status" aria-hidden="true">
-          <span className="badge badge-ok"><Mic size={12} /> Microphone on</span>
-          <span className="badge badge-info"><Hand size={12} /> Sign: letter “F”</span>
-        </div>
-        <figcaption className="demo-note">Illustration with sample text, not real classroom data.</figcaption>
-      </figure>
-      <div className="float-card fc-speech glass" aria-hidden="true">
-        <span className="fc-icon"><Mic size={16} /></span>
-        <div><b>Speech detected</b><span>English · live</span></div>
-        <Waveform bars={7} />
+    <figure className="lp-window" aria-label="Example of the live caption view with sample text">
+      <div className="lp-window-bar">
+        <span className="lp-live"><span className="lp-dot" aria-hidden="true" />Live</span>
+        <span className="lp-window-title">Physics · Newton’s laws</span>
+        <span className="lp-window-lang">English</span>
       </div>
-      <div className="float-card fc-sign glass" aria-hidden="true">
-        <span className="fc-icon mint"><Hand size={16} /></span>
-        <div><b>Sign recognised</b><span>Letter “F”</span></div>
-        <span className="fc-letter">F</span>
+      <div className="lp-stage" aria-hidden="true">
+        <p className="lp-line"><span className="lp-who">Teacher · speech</span>An object in motion stays in motion unless acted upon by an external force.</p>
+        <p className="lp-line"><span className="lp-who">Asha · typed</span>Could you give an example?</p>
+        <p className="lp-line"><span className="lp-who">Ben · sign</span>F O R C E</p>
       </div>
-      <div className="float-card fc-lang glass" aria-hidden="true">
-        <span className="fc-icon peach"><Languages size={16} /></span>
-        <div><b>Translated</b><span>Español</span></div>
+      <div className="lp-window-foot" aria-hidden="true">
+        <span>Translated to Español</span><span>3 people · 1 raised hand</span>
       </div>
-    </div>
+      <figcaption className="lp-note">Illustration with sample text, not real classroom data.</figcaption>
+    </figure>
   );
 }
 
 export default function Landing() {
   const { user, isAdmin } = useAuth();
   const home = isAdmin ? '/admin' : '/classroom';
+  const start = user ? home : '/register';
 
   return (
-    <>
+    <div className="lp">
       <a className="skip-link" href="#content">Skip to main content</a>
-      <header className="navbar">
-        <div className="container navbar-inner">
+      <header className="lp-nav">
+        <div className="lp-wrap lp-nav-inner">
           <Logo />
-          <nav className="nav-links" aria-label="Page sections">
-            <a href="#features">Features</a><a href="#how">How it works</a><a href="#accessibility">Accessibility</a>
+          <nav className="lp-nav-links" aria-label="Page sections">
+            <a href="#how">How it works</a><a href="#roles">Teachers and students</a><a href="#accessibility">Accessibility</a>
           </nav>
-          <div className="row">
+          <div className="lp-nav-actions">
             <ThemeToggle />
             {user ? <Link to={home} className="btn btn-primary btn-sm">Open app</Link> : (
               <>
@@ -97,76 +87,82 @@ export default function Landing() {
       </header>
 
       <main id="content">
-        <section className="hero">
-          <div className="container hero-grid">
-            <div>
-              <span className="badge badge-info"><CheckCircle2 size={13} aria-hidden="true" /> Accessible classrooms for everyone</span>
-              <h1>Every word, <span className="grad-text">captioned live</span> for every learner.</h1>
-              <p className="lead">A classroom accessibility platform that converts speech and supported sign-language gestures into real-time text captions, helping deaf and hard-of-hearing students follow every lecture.</p>
-              <div className="hero-actions">
-                <Link to={user ? home : '/register'} className="btn btn-primary btn-lg btn-glow">Get started <ArrowRight size={18} aria-hidden="true" /></Link>
+        <section className="lp-hero">
+          <div className="lp-wrap lp-hero-grid">
+            <div className="lp-hero-copy">
+              <p className="lp-kicker">Live captions for the classroom</p>
+              <h1>Every word, captioned live for every learner.</h1>
+              <p className="lp-lead">EchoSign turns speech and supported sign-language gestures into real-time text, so deaf and hard-of-hearing students can follow every lecture, and everyone can read it their own way.</p>
+              <div className="lp-cta">
+                <Link to={start} className="btn btn-primary btn-lg">Get started <ArrowRight size={18} aria-hidden="true" /></Link>
                 <a href="#how" className="btn btn-outline btn-lg">See how it works</a>
               </div>
-              <ul className="hero-points" aria-label="Highlights">
-                {highlights.map(({ icon: Icon, label }) => <li key={label}><Icon size={18} aria-hidden="true" />{label}</li>)}
-              </ul>
             </div>
-            <CaptionDemo />
+            <ClassPreview />
           </div>
         </section>
 
-        <section className="section" id="features" aria-labelledby="features-h">
-          <div className="container">
-            <div className="eyebrow">Features</div>
-            <h2 id="features-h">Everything a captioned classroom needs</h2>
-            <div className="bento">
-              {features.map(({ icon: Icon, title, body, size, art }) => (
-                <article key={title} className={`card feature bento-${size || 'sm'}`}>
-                  <div className="icon-wrap" aria-hidden="true"><Icon size={22} /></div>
-                  <h3>{title}</h3>
-                  <p className="muted">{body}</p>
-                  {art === 'wave' && <Waveform bars={24} className="big" />}
-                  {art === 'sign' && <div className="sign-art" aria-hidden="true">{['A', 'B', 'C', 'F'].map((c) => <span key={c}>{c}</span>)}</div>}
-                </article>
-              ))}
-            </div>
-            <p className="note"><b>About sign recognition:</b> it reads ASL fingerspelling (A–Z) and a small set of phrase gestures. It is not a full sign-language translator, and accuracy depends on lighting and camera quality.</p>
-          </div>
+        <section className="lp-facts" aria-label="What makes it different">
+          <ul className="lp-wrap lp-facts-grid">
+            {facts.map(([t, b]) => <li key={t}><h2>{t}</h2><p>{b}</p></li>)}
+          </ul>
         </section>
 
-        <section className="section soft" id="how" aria-labelledby="how-h">
-          <div className="container">
-            <div className="eyebrow">How it works</div>
-            <h2 id="how-h">Three steps from hello to transcript</h2>
-            <ol className="steps">
+        <section className="lp-section" id="how" aria-labelledby="how-h">
+          <div className="lp-wrap">
+            <p className="lp-kicker">How it works</p>
+            <h2 id="how-h" className="lp-h2">From hello to transcript in three steps</h2>
+            <ol className="lp-steps">
               {steps.map(([t, b], i) => (
-                <li key={t} className="card"><span className="step-n" aria-hidden="true">{i + 1}</span><h3>{t}</h3><p className="muted">{b}</p></li>
+                <li key={t}><span className="lp-step-n" aria-hidden="true">{i + 1}</span><h3>{t}</h3><p>{b}</p></li>
               ))}
             </ol>
+            <p className="lp-caveat"><b>About sign recognition:</b> it reads ASL fingerspelling (A–Z) and a small set of phrase gestures. It is not a full sign-language translator, and accuracy depends on lighting and camera quality.</p>
           </div>
         </section>
 
-        <section className="section" id="accessibility" aria-labelledby="a11y-h">
-          <div className="container a11y-grid">
+        <section className="lp-section lp-tint" id="roles" aria-labelledby="roles-h">
+          <div className="lp-wrap">
+            <p className="lp-kicker">Who it is for</p>
+            <h2 id="roles-h" className="lp-h2">One class, two points of view</h2>
+            <div className="lp-roles">
+              <div>
+                <h3>Teachers</h3>
+                <ul>{teachers.map((t) => <li key={t}>{t}</li>)}</ul>
+              </div>
+              <div>
+                <h3>Students</h3>
+                <ul>{students.map((t) => <li key={t}>{t}</li>)}</ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="lp-section" id="accessibility" aria-labelledby="a11y-h">
+          <div className="lp-wrap lp-a11y">
             <div>
-              <div className="eyebrow">Built to be accessible</div>
-              <h2 id="a11y-h">Designed with the people who use it</h2>
-              <p className="muted" style={{ marginTop: 10 }}>Accessibility is the product, not an extra. Every control works with a keyboard and a screen reader, and captions adapt to the reader.</p>
-              <ul className="checks">{a11y.map((t) => <li key={t}><CheckCircle2 size={18} aria-hidden="true" /> {t}</li>)}</ul>
+              <p className="lp-kicker">Built to be accessible</p>
+              <h2 id="a11y-h" className="lp-h2">Captions that adapt to the reader</h2>
+              <p className="lp-body">Accessibility is the product, not an extra. Every control works with a keyboard and a screen reader, status never relies on colour alone, and each person chooses how captions look.</p>
             </div>
-            <div className="cta-band">
-              <h2>Ready for your first captioned class?</h2>
+            <ul className="lp-chips" aria-label="Reading options">{comforts.map((c) => <li key={c}>{c}</li>)}</ul>
+          </div>
+        </section>
+
+        <section className="lp-cta-band" aria-labelledby="cta-h">
+          <div className="lp-wrap lp-cta-inner">
+            <div>
+              <h2 id="cta-h">Ready for your first captioned class?</h2>
               <p>Create a free account and start a class in under a minute.</p>
-              <Link to={user ? home : '/register'} className="btn btn-lg">Get started</Link>
             </div>
+            <Link to={start} className="btn btn-lg lp-cta-btn">Get started</Link>
           </div>
         </section>
       </main>
 
-      <footer className="footer">
-        <div className="container row between wrap"><Logo /><span>© {new Date().getFullYear()} EchoSign</span></div>
+      <footer className="lp-footer">
+        <div className="lp-wrap lp-footer-inner"><Logo /><span>© {new Date().getFullYear()} EchoSign</span></div>
       </footer>
-    </>
+    </div>
   );
 }
-

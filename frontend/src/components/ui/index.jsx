@@ -1,12 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, CircleDot, Clock, Info, MinusCircle, Radio, XCircle } from 'lucide-react';
+import { AlertTriangle, XCircle } from 'lucide-react';
+
 
 // ── PageHeader ───────────────────────────────────────────────────────────────
-export function PageHeader({ title, subtitle, icon: Icon, eyebrow, actions }) {
+// `icon` is accepted for backwards compatibility but no longer drawn: titles carry the meaning.
+export function PageHeader({ title, subtitle, eyebrow, actions }) {
   return (
     <header className="page-head">
       <div className="head-main">
-        {Icon && <div className="head-icon" aria-hidden="true"><Icon size={24} /></div>}
         <div>
           {eyebrow && <div className="eyebrow">{eyebrow}</div>}
           <h1>{title}</h1>
@@ -18,16 +19,16 @@ export function PageHeader({ title, subtitle, icon: Icon, eyebrow, actions }) {
   );
 }
 
-// ── StatusBadge: icon + text so state is never conveyed by colour alone ───────
+// ── StatusBadge: the word is always shown; warnings and errors also get an icon so severity is not colour-only ──
 const STATUS = {
-  live: { cls: 'badge-live', icon: Radio, pulse: true },
-  ok: { cls: 'badge-ok', icon: CheckCircle2 },
+  live: { cls: 'badge-live', pulse: true },
+  ok: { cls: 'badge-ok' },
   warn: { cls: 'badge-warn', icon: AlertTriangle },
   error: { cls: 'badge-error', icon: XCircle },
-  info: { cls: 'badge-info', icon: Info },
-  off: { cls: 'badge-off', icon: MinusCircle },
-  ended: { cls: 'badge-off', icon: CircleDot },
-  scheduled: { cls: 'badge-warn', icon: Clock },
+  info: { cls: 'badge-info' },
+  off: { cls: 'badge-off' },
+  ended: { cls: 'badge-off' },
+  scheduled: { cls: 'badge-warn' },
 };
 
 export function StatusBadge({ status = 'info', children, title }) {
@@ -35,17 +36,18 @@ export function StatusBadge({ status = 'info', children, title }) {
   const Icon = s.icon;
   return (
     <span className={`badge ${s.cls}`} title={title}>
-      {s.pulse ? <span className="pulse-dot" aria-hidden="true" /> : <Icon size={13} aria-hidden="true" />}
+      {s.pulse && <span className="pulse-dot" aria-hidden="true" />}
+      {Icon && <Icon size={13} aria-hidden="true" />}
       {children}
     </span>
   );
 }
 
 // ── EmptyState / LoadingState / ErrorState ───────────────────────────────────
-export function EmptyState({ icon: Icon, title, children, action }) {
+// `icon` is accepted for backwards compatibility but not drawn: an empty state is a title, a sentence and a next step.
+export function EmptyState({ title, children, action }) {
   return (
     <div className="state">
-      {Icon && <div className="state-icon" aria-hidden="true"><Icon size={26} /></div>}
       <h2>{title}</h2>
       {children && <p>{children}</p>}
       {action}

@@ -1,4 +1,4 @@
-import { Hand } from 'lucide-react';
+
 
 // Raise-hand button for everyone; the queue (with "lower") for the teacher and captioners.
 export default function HandPanel({ hands, userId, canModerate, isHost, live, onRaise, onLower }) {
@@ -7,17 +7,17 @@ export default function HandPanel({ hands, userId, canModerate, isHost, live, on
 
   return (
     <div className="card">
-      <h2 className="card-title"><Hand size={16} style={{ display: 'inline', verticalAlign: -2 }} /> Raise your hand
+      <h2 className="card-title">Raise your hand
         {hands.length > 0 && <span className="chip chip-amber" style={{ marginLeft: 8 }}>{hands.length} waiting</span>}</h2>
 
       {!canModerate || raised ? (
         <button className={`btn btn-block ${raised ? 'btn-outline' : 'btn-primary'}`} disabled={!live} onClick={() => onRaise(!raised)} aria-pressed={raised}>
-          ✋ {raised ? `Lower my hand (you are #${position + 1})` : 'Raise hand'}
+          {raised ? `Lower my hand (you are #${position + 1})` : 'Raise hand'}
         </button>
       ) : isHost ? (
         <p className="muted" style={{ fontSize: 14 }}>Students who raise a hand appear here, in order. Lower a hand once you’ve called on them.</p>
       ) : (
-        <button className="btn btn-outline btn-block" disabled={!live} onClick={() => onRaise(true)}>✋ Raise my own hand</button>
+        <button className="btn btn-outline btn-block" disabled={!live} onClick={() => onRaise(true)}>Raise my own hand</button>
       )}
 
       {canModerate && (

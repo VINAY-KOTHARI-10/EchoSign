@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, Bot, Captions, DoorOpen, GraduationCap, Hand, Plus, Search, TrendingUp } from 'lucide-react';
+import { Captions, Plus, Search } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+
 import * as api from '../api';
 import { LANGS, formatDate } from '../lib';
 import { useToast } from '../context/ToastContext';
@@ -13,13 +14,6 @@ const greeting = () => {
   const h = new Date().getHours();
   return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
 };
-
-const QUICK = [
-  { to: '/classroom#start', icon: Captions, title: 'Live Captions', sub: 'Speech → Text', tone: '' },
-  { to: '/signs', icon: Hand, title: 'Sign Recognition', sub: 'Gesture → Text', tone: 'mint' },
-  { to: '/conversation', icon: Bot, title: 'AI Assistant', sub: 'Practise & summarise', tone: 'peach' },
-  { to: '/progress', icon: TrendingUp, title: 'Progress', sub: 'Track & improve', tone: 'blue' },
-];
 
 export default function ClassroomHub() {
   const navigate = useNavigate();
@@ -83,39 +77,11 @@ export default function ClassroomHub() {
     <>
       <header className="greet">
         <div>
-          <h1>{greeting()}, {user.username} <span aria-hidden="true">👋</span></h1>
+          <h1>{greeting()}, {user.username}</h1>
           <p>{isTeacher ? 'Make your classroom inclusive for everyone.' : 'Join a class with the code your teacher shared.'}</p>
         </div>
         {isTeacher && <button className="btn btn-primary btn-lg" onClick={goToForm}><Plus size={18} aria-hidden="true" /> New Class</button>}
       </header>
-
-      {/* ── Hero ───────────────────────────────────────────── */}
-      <section className="hero-banner" aria-label="Welcome">
-        <div>
-          <h2>Speech &amp; Sign<br />to Real-Time Captions</h2>
-          <p>Convert speech and sign language into live text captions for an inclusive classroom.</p>
-          <div className="actions">
-            <button className="btn btn-light btn-lg" onClick={goToForm}>{isTeacher ? 'Start a Class' : 'Join a Class'} <ArrowRight size={18} aria-hidden="true" /></button>
-            <Link to="/signs" className="btn btn-glass btn-lg">Learn More</Link>
-          </div>
-        </div>
-        <figure className="hero-mock" style={{ margin: 0 }}>
-          <div className="mock-top"><span>Live Caption</span><span>EN</span></div>
-          <div className="mock-body" aria-hidden="true">An object in motion stays in motion unless acted upon by an external force.</div>
-          <small>Illustration with sample text.</small>
-        </figure>
-      </section>
-
-      <ul className="quick-tiles" aria-label="Shortcuts">
-        {QUICK.map(({ to, icon: Icon, title, sub, tone }) => (
-          <li key={title}>
-            <Link to={to} className={`quick-tile ${tone}`} onClick={to.endsWith('#start') ? (e) => { e.preventDefault(); goToForm(); } : undefined}>
-              <span className="qi" aria-hidden="true"><Icon size={22} /></span>
-              <b>{title}</b><span>{sub}</span>
-            </Link>
-          </li>
-        ))}
-      </ul>
 
       {/* ── Start / join ───────────────────────────────────── */}
       {!isTeacher && (
@@ -124,7 +90,6 @@ export default function ClassroomHub() {
       <div className={`grid ${isTeacher ? 'grid-2' : 'grid-1'} role-cards`} style={{ marginTop: 'var(--gap)' }}>
         {isTeacher && (
           <form className="card role-card" onSubmit={create} aria-labelledby="start-h">
-            <div className="role-icon" aria-hidden="true"><GraduationCap size={28} /></div>
             <h2 id="start-h">Start a class <span className="muted role-tag">Teacher</span></h2>
             <p className="muted">Begin a live session with real-time captions for every student.</p>
             <div className="field">
@@ -148,7 +113,6 @@ export default function ClassroomHub() {
         )}
 
         <form className="card role-card" onSubmit={join} aria-labelledby="join-h" noValidate>
-          <div className="role-icon" aria-hidden="true"><DoorOpen size={28} /></div>
           <h2 id="join-h">Join a class <span className="muted role-tag">Student</span></h2>
           <p className="muted">Enter the class code shared by your teacher.</p>
           <div className="field">

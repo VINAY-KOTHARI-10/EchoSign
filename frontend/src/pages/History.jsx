@@ -1,6 +1,7 @@
+import { Eye, History as HistoryIcon, Search, Trash2 } from 'lucide-react';
 // History - session history and replay
 import { useCallback, useEffect, useState } from 'react';
-import { Eye, History as HistoryIcon, Search, Trash2 } from 'lucide-react';
+
 import { Link } from 'react-router-dom';
 import * as api from '../api';
 import Pager from '../components/Pager';

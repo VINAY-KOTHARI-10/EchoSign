@@ -1,7 +1,8 @@
+import { Laptop, Smartphone, User } from 'lucide-react';
 // Profile - tabbed account, preferences, accessibility, security
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Accessibility, Laptop, Smartphone, User } from 'lucide-react';
+
 import * as api from '../api';
 import { LANGS, formatDate, roleLabel } from '../lib';
 import { useAuth } from '../context/AuthContext';
@@ -159,7 +160,7 @@ export default function Profile() {
 
       <TabPanel id="a11y" active={tab === 'a11y'} idPrefix="prof">
         <section className="card" aria-labelledby="a11y-h" style={{ maxWidth: 640 }}>
-          <div className="row between"><h2 id="a11y-h" className="card-title" style={{ marginBottom: 0 }}><Accessibility size={16} aria-hidden="true" style={{ display: 'inline', verticalAlign: -2 }} /> Accessibility</h2>
+          <div className="row between"><h2 id="a11y-h" className="card-title" style={{ marginBottom: 0 }}>Accessibility</h2>
             <button className="btn btn-ghost btn-sm" onClick={() => { resetPrefs(); setUi({ highContrast: false, reduceMotion: false, theme: 'system', announceCaptions: false }); }}>Reset</button></div>
           <p className="muted" style={{ fontSize: 13, margin: '6px 0 16px' }}>These settings are saved on this device and apply across the whole app. More caption options are in each class.</p>
 

@@ -9,7 +9,7 @@ export const FONTS = {
 };
 
 export const THEMES = [
-  { id: 'violet', label: 'Violet', bg: 'linear-gradient(135deg, #2b1a78 0%, #4b2cd6 58%, #6a4df0 100%)', fg: '#ffffff' },
+  { id: 'violet', label: 'Violet', bg: '#2d1d86', fg: '#ffffff' },
   { id: 'light', label: 'Light', bg: '#ffffff', fg: '#17131f' },
   { id: 'dark', label: 'Dark', bg: '#17131f', fg: '#ffffff' },
   { id: 'contrast', label: 'Yellow on black', bg: '#000000', fg: '#ffeb3b' },

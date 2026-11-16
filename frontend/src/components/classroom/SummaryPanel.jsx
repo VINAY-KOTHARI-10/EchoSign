@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { AlertTriangle, Printer, Sparkles } from 'lucide-react';
+import { AlertTriangle, Printer } from 'lucide-react';
+
 import * as api from '../../api';
 import { printHtml } from '../../lib/captions';
 import { useToast } from '../../context/ToastContext';
@@ -59,7 +60,7 @@ export default function SummaryPanel({ room, setRoom, canModerate, captionCount 
       <div className="card">
         <div className="row between wrap">
           <div>
-            <h2 className="card-title" style={{ marginBottom: 2 }}><Sparkles size={16} style={{ display: 'inline', verticalAlign: -2 }} /> Lecture summary</h2>
+            <h2 className="card-title" style={{ marginBottom: 2 }}>Lecture summary</h2>
             <p className="muted" style={{ fontSize: 14 }}>
               {s ? `Generated ${new Date(s.generatedAt).toLocaleString()}${s.generatedBy ? ` by ${s.generatedBy}` : ''}`
                 : 'Notes, key terms and a short quiz made from the class transcript.'}

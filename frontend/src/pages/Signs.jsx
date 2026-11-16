@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, Hand, RefreshCw, Search, Shuffle, XCircle } from 'lucide-react';
+import { Hand, RefreshCw, Search, Shuffle } from 'lucide-react';
+
 import HandDiagram from '../components/HandDiagram';
 import RecognitionLab from '../components/RecognitionLab';
 import SignView from '../components/SignView';
@@ -72,7 +73,7 @@ function Dictionary() {
 
         <div className="grid grid-2">
           <section className="card" aria-labelledby="sup-h">
-            <h2 id="sup-h" className="card-title"><CheckCircle2 size={16} aria-hidden="true" style={{ display: 'inline', verticalAlign: -2, color: 'var(--go)' }} /> Supported</h2>
+            <h2 id="sup-h" className="card-title">Supported</h2>
             <ul className="plain-list">
               <li>ASL fingerspelling A–Z (J and Z need a motion)</li>
               <li>7 phrase gestures used in class (below)</li>
@@ -80,7 +81,7 @@ function Dictionary() {
             </ul>
           </section>
           <section className="card" aria-labelledby="unsup-h">
-            <h2 id="unsup-h" className="card-title"><XCircle size={16} aria-hidden="true" style={{ display: 'inline', verticalAlign: -2, color: 'var(--stop)' }} /> Not supported</h2>
+            <h2 id="unsup-h" className="card-title">Not supported</h2>
             <ul className="plain-list">
               <li>Full sign-language sentences or grammar</li>
               <li>Other sign languages (BSL, ISL…) — letters are ASL</li>

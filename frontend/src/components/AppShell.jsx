@@ -1,7 +1,8 @@
+import { BarChart3, Bot, Captions, ChevronDown, Download, Hand, History, LibraryBig, LogOut, Menu, Mic, Presentation, Shield, Trophy, User, Users, WifiOff, X } from 'lucide-react';
 // AppShell - scrolling sidebar, compact footer, admin nav
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { BarChart3, Bot, Captions, ChevronDown, Download, Hand, History, LibraryBig, LogOut, Menu, Mic, Presentation, Shield, Sparkles, Trophy, User, Users, WifiOff, X } from 'lucide-react';
+
 import Logo from './Logo';
 import ThemeToggle from './ThemeToggle';
 import useOnline from '../hooks/useOnline';
@@ -111,13 +112,6 @@ export default function AppShell() {
   return (
     <Frame
       brandTo="/classroom" nav={nav} subtitle="Accessible Classroom Assistant"
-      promo={(
-        <Link to="/signs" className="promo">
-          <b>Make learning inclusive for all</b>
-          <span>Speech + Sign → Text</span>
-          <span className="promo-art" aria-hidden="true"><Sparkles size={22} /></span>
-        </Link>
-      )}
       extra={isAdmin && <NavLink to="/admin" className="nav-item"><Shield size={19} aria-hidden="true" /> Admin panel</NavLink>}
       onLogout={async () => { await logout(); navigate('/'); }}
     >

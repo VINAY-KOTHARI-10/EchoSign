@@ -1,10 +1,12 @@
+import { BarChart3, Flame, Mic, Target, Timer } from 'lucide-react';
+import { Link } from 'react-router-dom';
 // Progress - skill bars and performance charts
 import { useEffect, useMemo, useState } from 'react';
 import { Bar, Line } from 'react-chartjs-2';
 import {
   BarElement, CategoryScale, Chart as ChartJS, Filler, Legend, LinearScale, LineElement, PointElement, Tooltip,
 } from 'chart.js';
-import { BarChart3, Flame, Mic, Target, Timer } from 'lucide-react';
+
 import * as api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { langName } from '../lib';
@@ -111,7 +113,7 @@ export default function Progress() {
       {loading && (
         <div className="grid grid-2" aria-busy="true"><div className="card"><Skeleton height={20} width="40%" /><Skeleton height={240} style={{ marginTop: 16 }} /></div><div className="card"><Skeleton height={20} width="40%" /><Skeleton height={240} style={{ marginTop: 16 }} /></div></div>
       )}
-      {noData && !error && <div className="card"><EmptyState icon={BarChart3} title="No practice data yet">Complete a practice session and your charts will appear here.</EmptyState></div>}
+      {noData && !error && <div className="card"><EmptyState icon={BarChart3} title="No practice data yet" action={<Link to="/dashboard" className="btn btn-primary btn-sm">Start a practice session</Link>}>Complete a practice session and your charts will appear here.</EmptyState></div>}
 
       {!loading && skills && (
         <section className="card" aria-labelledby="skills-h" style={{ marginBottom: 'var(--gap)' }}>

@@ -11,6 +11,8 @@ import './styles/design.css';
 import './styles/pages.css';
 import './styles/theme.css';
 import './styles/premium.css';
+import './styles/refine.css';
+import './styles/landing.css';
 
 // Offline support: the service worker keeps the app shell and saved lecture notes (never live classroom data).
 if ('serviceWorker' in navigator && import.meta.env.PROD) {

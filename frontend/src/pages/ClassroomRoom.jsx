@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, ArrowLeft, Bell, CalendarClock, Copy, Download, HelpCircle, Maximize2, Mic, MicOff, Pause, Play, RefreshCw, Share2, Square, WifiOff } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import {
-  AlertTriangle, ArrowLeft, Bell, BookOpen, CalendarClock, Captions, Copy, Download, FileText, Hand, HelpCircle, Maximize2,
-  MessageCircleQuestion, Mic, MicOff, Pause, Play, RefreshCw, Settings, Share2, Sparkles, Square, Users, WifiOff,
-} from 'lucide-react';
+
 import * as api from '../api';
 import { LANGS, langBcp, langName } from '../lib';
 import { alertReason } from '../lib/captions';
@@ -178,12 +176,12 @@ export default function ClassroomRoom() {
 
   const studentCount = rm.participants.filter((p) => p.role !== 'HOST').length;
   const tabs = useMemo(() => [
-    { id: 'live', label: 'Live Caption', icon: Captions },
-    { id: 'transcript', label: 'Transcript', icon: FileText },
-    { id: 'summary', label: 'Summary', icon: Sparkles },
-    { id: 'ask', label: 'Ask', icon: MessageCircleQuestion },
-    ...(meta.canModerate ? [{ id: 'students', label: `Students (${studentCount})`, icon: Users }] : []),
-    ...(meta.isHost ? [{ id: 'settings', label: 'Settings', icon: Settings }] : []),
+    { id: 'live', label: 'Live Caption' },
+    { id: 'transcript', label: 'Transcript' },
+    { id: 'summary', label: 'Summary' },
+    { id: 'ask', label: 'Ask' },
+    ...(meta.canModerate ? [{ id: 'students', label: `Students (${studentCount})` }] : []),
+    ...(meta.isHost ? [{ id: 'settings', label: 'Settings' }] : []),
   ], [meta.canModerate, meta.isHost, studentCount]);
 
   if (rm.error) {
@@ -229,7 +227,6 @@ export default function ClassroomRoom() {
       {/* ── Header ───────────────────────────────────────────── */}
       <header className="room-head">
         <div className="id">
-          <div className="room-badge" aria-hidden="true"><BookOpen size={28} /></div>
           <div style={{ minWidth: 0 }}>
             <h1>{room.title}</h1>
             <div className="room-meta">
@@ -330,19 +327,9 @@ export default function ClassroomRoom() {
 
             {/* ── Status strip ──────────────────────────────── */}
             <section className="status-strip" aria-label="Live status" aria-live="polite">
-              <div className="strip-item">
-                <span className={`strip-icon ${mic.tone === 'ok' ? 'ok' : mic.tone === 'warn' ? 'warn' : ''}`} aria-hidden="true">{speechOn ? <Mic size={22} /> : <MicOff size={22} />}</span>
-                <div><b>Microphone</b><span className={mic.tone}>{mic.text}</span></div>
-              </div>
-              <div className="strip-item">
-                <span className={`strip-icon ${cam.tone === 'warn' ? 'warn' : ''}`} aria-hidden="true"><Hand size={22} /></span>
-                <div><b>Sign Recognition</b><span className={cam.tone}>{cam.text}</span></div>
-              </div>
-              <span className={`wave-mini ${speechOn ? 'on' : ''}`} aria-hidden="true">{Array.from({ length: 7 }, (_, i) => <i key={i} style={speechOn ? undefined : { height: 6 + (i % 3) * 4 }} />)}</span>
-              <div className={`strip-item both ${speechOn || signOn ? '' : 'idle'}`}>
-                <span className="strip-icon ok" aria-hidden="true" style={speechOn || signOn ? undefined : { background: '#e7e5f3', color: 'var(--muted)' }}><Captions size={22} /></span>
-                <div><b>{inputs[0]}</b><small>{inputs[1]}</small></div>
-              </div>
+              <div className="strip-item"><div><b>Microphone</b><span className={mic.tone}>{mic.text}</span></div></div>
+              <div className="strip-item"><div><b>Sign recognition</b><span className={cam.tone}>{cam.text}</span></div></div>
+              <div className={`strip-item both ${speechOn || signOn ? '' : 'idle'}`}><div><b>{inputs[0]}</b><small>{inputs[1]}</small></div></div>
             </section>
             {speech.error && <div className="error-text" role="alert" style={{ margin: 0 }}>{speech.error}</div>}
 
@@ -366,18 +353,6 @@ export default function ClassroomRoom() {
             <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
               {speech.supported ? SPEECH_PRIVACY : 'This browser cannot turn speech into text. Type captions below, use sign recognition, or open EchoSign in Chrome or Edge.'}
             </p>
-
-            {/* ── Feature tiles ─────────────────────────────── */}
-            <ul className="feature-tiles plain-grid" aria-label="Class features">
-              <li className="tile"><div className="tile-top"><span className="tile-icon" aria-hidden="true"><Mic size={22} /></span><StatusBadge status={speechOn ? 'ok' : 'off'}>{speechOn ? 'Live' : 'Off'}</StatusBadge></div>
-                <h3>Speech-to-Text</h3><p>Convert the teacher’s speech to real-time text captions.</p></li>
-              <li className="tile mint"><div className="tile-top"><span className="tile-icon" aria-hidden="true"><Hand size={22} /></span><StatusBadge status={signOn ? 'ok' : 'off'}>{signOn ? 'Active' : 'Off'}</StatusBadge></div>
-                <h3>Sign-to-Text</h3><p>Recognise supported sign gestures and convert them to text.</p></li>
-              <li><button className="tile peach" style={{ width: '100%', height: '100%' }} onClick={() => setTab('summary')}><div className="tile-top"><span className="tile-icon" aria-hidden="true"><Sparkles size={22} /></span></div>
-                <h3>AI Assist</h3><p>Summarise key points and generate notes from the class.</p></button></li>
-              <li><button className="tile blue" style={{ width: '100%', height: '100%' }} onClick={() => setTab('transcript')}><div className="tile-top"><span className="tile-icon" aria-hidden="true"><FileText size={22} /></span><StatusBadge status="info">{captions.length}</StatusBadge></div>
-                <h3>Transcript</h3><p>Time-stamped transcript of everything said, signed and typed.</p></button></li>
-            </ul>
 
             <div className="grid grid-2">
               <TypePanel live={live} onSend={(t) => rm.sendCaption(t, 'TEXT')} />

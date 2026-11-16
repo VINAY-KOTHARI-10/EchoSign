@@ -1,0 +1,263 @@
+/* EchoSign refinement layer. Loaded last.
+   Keeps the purple brand (#5b3df5 / #7c5cff on white and light lavender) and removes the decoration that sat on top
+   of it: mesh backgrounds, glass blur, glow shadows, gradient fills, floating cards and large radii. Purple is used
+   for what matters: primary actions, links, the active nav item, focus rings and live status. Everything else is a
+   flat white or lavender surface with a hairline border. Works in light, dark and high-contrast themes. */
+
+:root {
+  /* flatter geometry */
+  --radius: 12px; --radius-lg: 16px;
+  --r-sm: 8px; --r-md: 10px; --r-lg: 12px; --r-xl: 16px;
+  /* one quiet shadow for resting surfaces, one for floating layers (menus, dialogs) */
+  --shadow: 0 1px 2px rgba(21, 21, 58, 0.05);
+  --shadow-sm: 0 1px 2px rgba(21, 21, 58, 0.05);
+  --shadow-lg: 0 12px 32px rgba(21, 21, 58, 0.14);
+  --glow: none;
+  --glass: var(--surface);
+  --glass-line: var(--line);
+  --grad: var(--violet);
+  /* the caption stage: one flat deep violet */
+  --stage: #2d1d86;
+  --stage-2: #3b27a8;
+  --line: #e4e0f5;
+  --font-display: 'Manrope', 'Inter', system-ui, sans-serif;
+}
+:root[data-theme='dark'] {
+  --stage: #1f1a52; --stage-2: #2a2370;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+  --line: #2f2960;
+}
+:root[data-contrast='high'] { --stage: #1b0b66; --stage-2: #1b0b66; --line: #2a2a45; }
+
+/* ── Page ─────────────────────────────────────────────────── */
+body, :root[data-theme='light'] body, :root[data-theme='dark'] body { background: var(--bg); background-attachment: scroll; }
+.hero::before, .hero::after, .hero-art::before, .cta-band::after, .auth-brand::before, .stage-card::before, .hero-banner::before, .blob, .auth-waves { display: none !important; }
+.glass, .auth-card, .sidebar, .navbar, .mobile-bar, .hero .badge-info, .hero-points li, .bento .feature, .section.soft,
+:root[data-theme='light'] .sidebar, :root[data-theme='light'] .section.soft, :root[data-theme='light'] .bento .feature {
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+h1, h2, h3, h4 { letter-spacing: -0.015em; }
+
+/* ── Type scale (one source for every page title) ─────────── */
+.page-head h1, .greet h1, main > header h1, .main h1 { font-size: 28px; font-weight: 750; line-height: 1.2; }
+.main h2 { font-weight: 700; }
+.eyebrow { text-transform: none; letter-spacing: 0; font-size: 14px; font-weight: 650; color: var(--violet); }
+
+/* ── Navigation ───────────────────────────────────────────── */
+.sidebar { background: var(--surface); border-right: 1px solid var(--line); }
+:root[data-theme='light'] .sidebar { background: var(--surface); }
+.nav-item { color: var(--ink); border-radius: 8px; font-weight: 550; }
+.nav-item:hover:not(.active) { background: var(--violet-light); color: var(--violet-dark); }
+.nav-item.active, .shell.admin .nav-item.active {
+  background: var(--violet-light); color: var(--violet-dark); font-weight: 700; box-shadow: none;
+}
+.nav-item.active svg { color: var(--violet); }
+.nav-item.active::before { display: none; }
+:root[data-contrast='high'] .nav-item.active, :root[data-contrast='high'] .shell.admin .nav-item.active { background: var(--violet); color: #fff; }
+:root[data-contrast='high'] .nav-item.active svg { color: #fff; }
+.promo { display: none; }
+.user-pill { background: transparent; border-radius: 10px; }
+.avatar { background: var(--violet); }
+.navbar { background: var(--bg); border-bottom: 1px solid var(--line); }
+.mobile-bar { background: var(--surface) !important; border-bottom: 1px solid var(--line); }
+
+/* ── Surfaces ─────────────────────────────────────────────── */
+.card, :root[data-theme='light'] .card:not(.feature) { background: var(--surface); border: 1px solid var(--line); box-shadow: none; border-radius: var(--r-lg); }
+.card:where(.feature, .quick-tile, .tile):hover, a.card:hover { transform: none; box-shadow: none; border-color: var(--violet-3); }
+.table-wrap { border-radius: var(--r-lg); box-shadow: none; }
+.btn:hover:not(:disabled), .btn:active:not(:disabled) { transform: none; }
+
+/* ── Buttons ──────────────────────────────────────────────── */
+.btn { border-radius: 10px; font-weight: 650; }
+.btn-primary, .btn-primary:hover:not(:disabled) { background: var(--violet); color: #fff; box-shadow: none; }
+.btn-primary:hover:not(:disabled) { background: var(--violet-dark); }
+:root[data-theme='dark'] .btn-primary { background: #7c5cff; }
+:root[data-theme='dark'] .btn-primary:hover:not(:disabled) { background: #8b6cff; }
+.btn-glow { box-shadow: none; }
+.btn-light { box-shadow: none; }
+.icon-btn { border-radius: 10px; box-shadow: none; }
+.icon-btn .dot-badge { background: var(--violet); border-color: var(--surface); }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+/* ── Tabs: underline style, not pills ─────────────────────── */
+.tabs.tabs-pill { border-bottom: 1px solid var(--line); gap: 4px; padding-bottom: 0; }
+.tabs-pill .tab { min-height: 44px; padding: 10px 14px; border-radius: 0; background: transparent; border: 0; border-bottom: 2px solid transparent; box-shadow: none; color: var(--muted); font-size: 15px; font-weight: 600; margin-bottom: -1px; }
+.tabs-pill .tab:hover { background: transparent; color: var(--ink); }
+.tabs-pill .tab[aria-selected='true'] { background: transparent; color: var(--violet-dark); border-color: var(--violet); box-shadow: none; }
+.tabs-pill .tab[aria-selected='true']::after { display: none; }
+.tabs-pill .tab:not([aria-selected='true']) .count { background: var(--violet-light); color: var(--violet-dark); }
+.tabs-pill .tab[aria-selected='true'] .count { background: var(--violet); color: #fff; }
+
+/* ── Classroom hub: forms, no tinted tiles ────────────────── */
+.role-icon { display: none; }
+.role-cards .role-card h2 { font-size: 20px; }
+.role-tag { font-size: 12px; font-weight: 600; margin-left: 6px; }
+.join-tips { font-size: 14px; }
+.greet { margin-bottom: 20px; }
+
+/* ── Live classroom ───────────────────────────────────────── */
+.room-badge { display: none; }
+.room-head h1 { font-size: 26px; font-weight: 750; }
+.stage-card { background: var(--stage); border-radius: var(--r-lg); box-shadow: none; }
+.live-dot { box-shadow: none; }
+.pill-live { background: var(--mint); }
+.room-layout { gap: 20px; }
+
+/* ── Landing ──────────────────────────────────────────────── */
+.hero { padding: 64px 0 72px; background: var(--bg); overflow: visible; }
+.hero h1 { font-size: clamp(36px, 5vw, 56px); line-height: 1.08; letter-spacing: -0.03em; font-weight: 750; }
+.grad-text, :root[data-theme='dark'] .grad-text { color: var(--violet); background: none; }
+.hero p.lead { font-size: 18px; max-width: 54ch; }
+.hero-art { padding: 0; }
+.demo { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-lg); transform: none; transition: none; padding: 16px; }
+.hero-art:hover .demo { transform: none; }
+.demo-captions { background: var(--stage); border-radius: var(--r-md); }
+.hero-points { gap: 8px 22px; }
+.hero-points li { background: none; border: 0; padding: 0; border-radius: 0; font-weight: 550; color: var(--muted); }
+.hero-points li + li::before { content: ''; }
+.float-card { display: none; }
+.badge-info { border-radius: 999px; }
+.bento { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 40px; margin-top: 28px; }
+.bento .feature, :root[data-theme='light'] .bento .feature { background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 22px 0 26px; box-shadow: none; display: block; grid-column: auto; grid-row: auto; }
+.bento .feature:hover { border-color: var(--violet); }
+.bento .feature h3 { font-size: 18px; margin-bottom: 6px; }
+.section.soft, :root[data-theme='light'] .section.soft { background: var(--surface-2); border-block: 1px solid var(--line); }
+.steps .card { padding: 22px; }
+.step-n { background: var(--violet); box-shadow: none; }
+.checks { display: grid; gap: 10px; margin-top: 18px; list-style: none; padding: 0; }
+.checks li { padding-left: 18px; position: relative; }
+.checks li::before { content: ''; position: absolute; left: 0; top: 0.7em; width: 6px; height: 6px; border-radius: 50%; background: var(--violet); }
+.cta-band { background: var(--stage); border-radius: var(--r-lg); box-shadow: none; }
+.cta-band .btn { background: #fff; color: var(--violet-dark); }
+@media (max-width: 900px) { .bento { grid-template-columns: 1fr; } }
+
+/* ── Sign in / register ───────────────────────────────────── */
+.auth-brand { background: var(--stage); }
+.swoosh::after { display: none; }
+.pt-icon { background: rgba(255, 255, 255, 0.12); backdrop-filter: none; border-radius: 10px; }
+.auth-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: none; }
+.auth-card h1 { font-size: 28px; letter-spacing: -0.02em; }
+
+/* ── Data ─────────────────────────────────────────────────── */
+.waveform i, .wave-mini.on i { background: var(--violet-2); }
+.skeleton, :root[data-theme='dark'] .skeleton { background: var(--violet-light); animation: none; }
+.podium.rank-1, :root[data-theme='dark'] .podium.rank-1 { background: var(--surface-2); }
+dialog.dialog { border-radius: var(--r-lg); box-shadow: var(--shadow-lg); }
+dialog.dialog::backdrop { backdrop-filter: none; background: rgba(21, 21, 58, 0.55); }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+
+/* Sign out is a quiet outline button; it turns red only when you point at it. */
+.logout-btn, :root[data-theme='dark'] .logout-btn { background: transparent; color: var(--ink); border-color: var(--line); }
+.logout-btn:hover:not(:disabled) { background: transparent; color: var(--stop); border-color: var(--stop); }
+
+/* The explicit light/dark theme blocks in premium.css carry more specificity than the tokens at the top of this file,
+   so the flat values are restated here for light mode. */
+:root[data-theme='light'] {
+  --glass: var(--surface); --glass-line: var(--line);
+  --shadow: 0 1px 2px rgba(21, 21, 58, 0.05);
+  --shadow-lg: 0 12px 32px rgba(21, 21, 58, 0.14);
+}
+:root[data-theme] .btn-primary, :root[data-theme] .btn-primary:hover:not(:disabled), :root[data-theme] .tabs-pill .tab[aria-selected='true'] { box-shadow: none; }
+:root[data-theme] .glass, :root[data-theme] .float-card, :root[data-theme] .quick-tile, :root[data-theme] .stat, :root[data-theme] .hero-banner { box-shadow: none; }
+:root[data-theme='light'] .auth-card { background: var(--surface); }
+:root[data-theme='light'] .demo { box-shadow: var(--shadow-lg); }
+
+/* Tab strips scroll sideways only (no stray vertical scrollbar). */
+.tabs { overflow-y: hidden; }
+
+/* Auth brand panel: plain list, no icon chips. */
+.auth-points { list-style: none; padding: 0; margin: 22px 0 0; display: grid; gap: 12px; }
+.auth-points li { font-size: 16px; padding-left: 18px; position: relative; }
+.auth-points li::before { content: ''; position: absolute; left: 0; top: 0.65em; width: 6px; height: 6px; border-radius: 50%; background: #c4b5fd; }
+
+/* ── Key numbers: one joined strip, figures first, no icon tiles ── */
+.stat-icon { display: none; }
+.grid-stats { gap: 0; background: var(--surface); border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; padding: 0; }
+:root[data-theme] .grid-stats > li.card.stat, .grid-stats > .stat { border: 0; border-radius: 0; box-shadow: inset 1px 0 0 var(--line), inset 0 1px 0 var(--line); background: transparent; padding: 16px 20px; transform: none; }
+.stat:hover { transform: none; }
+.stat .num { font-size: 28px; font-weight: 750; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.stat .label { font-size: 13px; font-weight: 550; }
+:root[data-contrast='high'] .grid-stats { border-width: 2px; }
+
+/* ── Tables: row headers read as content, not column labels ── */
+.table tbody th[scope='row'] { text-transform: none; letter-spacing: 0; font-size: inherit; font-weight: 650; color: var(--ink); background: transparent; text-align: left; }
+.table th[scope='col'] { text-transform: none; font-size: 13px; font-weight: 650; letter-spacing: 0; }
+.table-wrap { scrollbar-width: thin; scrollbar-color: var(--violet-3) transparent; }
+.table-wrap::-webkit-scrollbar { height: 8px; }
+.table-wrap::-webkit-scrollbar-track { background: transparent; }
+.table-wrap::-webkit-scrollbar-thumb { background: var(--violet-3); border-radius: 8px; }
+.table { min-width: 640px; }
+.table tbody th[scope='row'] { overflow-wrap: anywhere; min-width: 160px; }
+.table td, .table th { white-space: nowrap; }
+.table tbody th[scope='row'] { white-space: normal; }
+
+/* ── Small screens ────────────────────────────────────────── */
+@media (max-width: 560px) {
+  .stage-head { flex-wrap: wrap; padding: 14px 14px 6px; }
+  .stage-title { white-space: nowrap; }
+  .stage-title span { display: none; }
+  .stage-tools { flex: 1 1 100%; min-width: 0; }
+  .stage-tools .stage-select { flex: 1 1 auto; min-width: 0; max-width: 100%; }
+  .main h1, .page-head h1, .greet h1, .room-head h1 { font-size: 24px; }
+  .hero { padding: 40px 0 48px; }
+  .hero h1 { font-size: 34px; }
+  .auth-card { padding: 24px; }
+}
+
+/* ── Live classroom: status and controls ──────────────────── */
+.status-strip { display: flex; flex-wrap: wrap; gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 0; box-shadow: none; }
+.status-strip .strip-item { flex: 1 1 180px; padding: 12px 16px; display: block; border-left: 1px solid var(--line); background: transparent; }
+.status-strip .strip-item:first-child { border-left: 0; }
+.status-strip .strip-item b { display: block; font-size: 13px; font-weight: 650; color: var(--muted); }
+.status-strip .strip-item span, .status-strip .strip-item small { display: block; font-size: 15px; font-weight: 650; color: var(--ink); }
+.status-strip .strip-item small { font-weight: 500; color: var(--muted); font-size: 13px; }
+.status-strip .strip-item span.ok { color: var(--go); }
+.status-strip .strip-item span.error, .status-strip .strip-item span.warn { color: var(--stop); }
+.control-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.control-row .btn:not(.btn-primary):not(.btn-danger-soft) svg { display: none; }
+@media (max-width: 560px) {
+  .status-strip .strip-item { flex-basis: 100%; border-left: 0; border-top: 1px solid var(--line); }
+  .status-strip .strip-item:first-child { border-top: 0; }
+  .control-row .btn { flex: 1 1 calc(50% - 10px); justify-content: center; }
+  .control-row .btn-primary, .control-row .btn-danger-soft { flex-basis: 100%; }
+}
+:root[data-theme] .status-strip .strip-item, :root[data-theme] .status-strip .strip-item.both { background: transparent; border-radius: 0; }
+
+/* ── Forms: never squeeze a field ─────────────────────────── */
+.select, .input { min-width: 0; }
+.role-cards .grid-2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
+@media (max-width: 1180px) {
+  .role-cards.grid-2 { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) { .role-cards .grid-2 { grid-template-columns: minmax(0, 1fr); } }
+.join-tips { list-style: none; padding: 0; margin: 4px 0 18px; display: grid; gap: 8px; background: none; border: 0; }
+.join-tips li { color: var(--muted); font-size: 14px; line-height: 1.5; padding-left: 16px; position: relative; }
+.join-tips li::before { content: ''; position: absolute; left: 0; top: 0.6em; width: 5px; height: 5px; border-radius: 50%; background: var(--violet); }
+.join-tips li::marker { content: none; }
+.join-tips li > span::before { content: none; }
+.join-tips li { display: block; }
+
+/* ── Empty states: a title, one sentence and a next step ─── */
+.state { padding: 40px 24px; gap: 6px; }
+.state h2 { font-size: 17px; font-weight: 700; }
+.state p { max-width: 46ch; color: var(--muted); }
+.state .btn { margin-top: 12px; }
+
+/* ── History / Leaderboard switch: underline tabs, like every other tab bar ── */
+.segment, :root[data-theme] .segment { display: flex; gap: 4px; padding: 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; margin-bottom: var(--section-gap); }
+.segment a { padding: 10px 14px; border-radius: 0; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; text-decoration: none; }
+.segment a:hover { color: var(--ink); }
+.segment a[aria-current='page'] { background: transparent; color: var(--violet-dark); border-bottom-color: var(--violet); box-shadow: none; }
+.skill-bar i { background: var(--violet); }
+
+/* Profile header: the three numbers sit in the card, not in cards inside the card. */
+.profile-head .stat, :root[data-theme] .profile-head .card.stat { border: 0; background: transparent; box-shadow: none; padding: 0 28px 0 0; min-width: 0; }
+.profile-head .stat .num { font-size: 24px; }
+
+/* Touch: every control is at least 40px tall. */
+@media (pointer: coarse), (max-width: 560px) {
+  main button, main .btn, main select, main input:not([type='checkbox']):not([type='radio']) { min-height: 40px; }
+  main .btn-icon, main .icon-btn { min-width: 40px; }
+}

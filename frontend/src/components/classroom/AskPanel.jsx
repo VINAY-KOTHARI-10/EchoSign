@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { MessageCircleQuestion, Send } from 'lucide-react';
+import { Send } from 'lucide-react';
+
 import * as api from '../../api';
 import { StatusBadge } from '../ui';
 
@@ -34,7 +35,7 @@ export default function AskPanel({ room, captionCount, onJump }) {
   return (
     <div className="stack">
       <section className="card" aria-labelledby="ask-h">
-        <h2 id="ask-h" className="card-title"><MessageCircleQuestion size={16} aria-hidden="true" style={{ display: 'inline', verticalAlign: -2 }} /> Ask your lecture</h2>
+        <h2 id="ask-h" className="card-title">Ask your lecture</h2>
         <p className="muted" style={{ fontSize: 14, marginBottom: 12 }}>
           Questions are answered from what was said in this class{room.summary ? ' and the saved notes' : ''}, with the time it was said. If the lecture didn’t cover it, you’ll be told.
         </p>

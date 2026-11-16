@@ -1,6 +1,7 @@
 // Helpers for caption text: formatting, export, highlighting, alerts.
 
-export const SOURCE_ICON = { SIGN: ' 🤟', TEXT: ' ⌨️', SPEECH: '' };
+// Where a caption came from, as words (not emoji), so screen readers and colour-blind readers get it too.
+export const SOURCE_ICON = { SIGN: ' · sign', TEXT: ' · typed', SPEECH: '' };
 export const SOURCE_LABEL = { SIGN: ' (sign)', TEXT: ' (typed)', SPEECH: '' };
 
 const pad = (n, w = 2) => String(Math.floor(n)).padStart(w, '0');
@@ -82,7 +83,8 @@ export function splitHighlights(text, terms) {
   const list = (terms || []).map((t) => t.trim()).filter(Boolean);
   if (!list.length) return [{ text, hit: false }];
   // With one capture group, split() puts the matches at the odd indexes.
-  const parts = text.split(new RegExp(`(${list.map(reEsc).join('|')})`, 'i'));
+  // A keyword highlights the whole word it starts ("cell" marks "cells"), never half of a word.
+  const parts = text.split(new RegExp(`((?<![\\p{L}\\p{N}])(?:${list.map(reEsc).join('|')})[\\p{L}\\p{N}]*)`, 'iu'));
   return parts.map((p, i) => ({ text: p, hit: i % 2 === 1 })).filter((p) => p.text !== '');
 }
 

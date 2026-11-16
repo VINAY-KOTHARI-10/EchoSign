@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, FlaskConical, Trash2, Upload } from 'lucide-react';
+import { Download, Trash2, Upload } from 'lucide-react';
+
 import SignView from './SignView';
 import { StatusBadge, useConfirm } from './ui';
 import useSignRecognition from '../hooks/useSignRecognition';
@@ -89,7 +90,7 @@ export default function RecognitionLab() {
     <div className="lab-layout">
       <div className="stack">
         <section className="card" aria-labelledby="rl-h">
-          <h2 id="rl-h" className="card-title"><FlaskConical size={16} aria-hidden="true" style={{ display: 'inline', verticalAlign: -2 }} /> Recognition test</h2>
+          <h2 id="rl-h" className="card-title">Recognition test</h2>
           <p className="muted" style={{ fontSize: 14, marginBottom: 12 }}>
             Measure how well fingerspelling recognition works with real people and cameras. Each sample is about a second of hand-landmark numbers. No video or pictures are saved or uploaded, and nothing leaves this device unless you export it.
           </p>

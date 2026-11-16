@@ -1,6 +1,7 @@
+import { ArrowDown, Pencil } from 'lucide-react';
 // CaptionStage - real-time caption display component
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDown, Pencil } from 'lucide-react';
+
 import { SOURCE_ICON, splitHighlights } from '../../lib/captions';
 import { useToast } from '../../context/ToastContext';
 
@@ -77,7 +78,7 @@ export default function CaptionStage({
               ) : (
                 <>
                   <span style={c.partial ? { opacity: 0.85 } : undefined}><Highlighted text={c.text} keywords={keywords} /></span>
-                  {c.editedAt && <span className="caption-edited" title={`Original: ${c.originalText}`}>✎ corrected</span>}
+                  {c.editedAt && <span className="caption-edited" title={`Original: ${c.originalText}`}>corrected</span>}
                   {canEdit?.(c) && !c.partial && (
                     <button className="caption-edit" onClick={() => setEditing({ id: c.id, text: c.text })} aria-label="Correct this caption"><Pencil size={14} /></button>
                   )}

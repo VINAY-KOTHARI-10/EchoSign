@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { BarChart3, Hand, Mic, Radio, Users } from 'lucide-react';
 
+
 const ROLE_TEXT = { HOST: 'Teacher', CAPTIONER: 'Captioner', STUDENT: 'Student' };
 // Soft, readable avatar colours picked from the name, so the same person always has the same colour.
 const PALETTE = [['#ede6ff', '#4b2cd6'], ['#dbeafe', '#1d4ed8'], ['#fce7f3', '#be185d'], ['#dcfce7', '#15803d'], ['#fef3c7', '#92400e'], ['#e0f2fe', '#0369a1']];

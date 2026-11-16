@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { BookOpenCheck, CalendarCheck, Captions, Clock, Presentation, Sparkles, Users } from 'lucide-react';
+import { Link } from 'react-router-dom';
+
 import * as api from '../api';
 import { formatDate } from '../lib';
 import { EmptyState, ErrorState, LoadingState, PageHeader, StatusBadge } from '../components/ui';
@@ -37,7 +38,7 @@ export default function TeacherDashboard() {
         actions={<Link to="/classroom" className="btn btn-primary">Start or open a class</Link>} />
 
       {t.classrooms === 0 ? (
-        <div className="card"><EmptyState icon={Presentation} title="No classes yet">Start a class from the Classroom page. Attendance, captions and notes will appear here.</EmptyState></div>
+        <div className="card"><EmptyState icon={Presentation} title="No classes yet" action={<Link to="/classroom" className="btn btn-primary btn-sm">Start a class</Link>}>Start a class from the Classroom page. Attendance, captions and notes will appear here.</EmptyState></div>
       ) : (
         <>
           <ul className="grid-stats plain-grid" style={{ marginBottom: 'var(--gap)' }} aria-label="Key numbers">

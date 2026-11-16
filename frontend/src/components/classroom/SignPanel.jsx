@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, CameraOff, Delete, Hand, Plus, Trash2 } from 'lucide-react';
+import { Camera, CameraOff, Delete, Plus, Trash2 } from 'lucide-react';
+
 import { GESTURES } from '../../lib/signGestures';
 import { confidenceLabel } from '../../lib/recognition';
 import { LETTERS } from '../../lib/fingerspelling';
@@ -51,7 +52,7 @@ export function SignCamera({ sign, signMode, setSignMode, word, setWord, autoSen
   return (
     <section className="card" aria-labelledby="sign-h">
       <div className="row between" style={{ marginBottom: 12 }}>
-        <h2 id="sign-h" className="card-title" style={{ marginBottom: 0 }}><Hand size={16} aria-hidden="true" style={{ display: 'inline', verticalAlign: -2 }} /> Sign to text</h2>
+        <h2 id="sign-h" className="card-title" style={{ marginBottom: 0 }}>Sign to text</h2>
         <span aria-live="polite"><StatusBadge status={st.status}>{st.text}</StatusBadge></span>
       </div>
 

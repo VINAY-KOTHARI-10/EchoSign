@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { FileText, LibraryBig, WifiOff } from 'lucide-react';
+import { Link } from 'react-router-dom';
+
 import * as api from '../api';
 import { formatDate } from '../lib';
 import Pager from '../components/Pager';
@@ -31,7 +32,7 @@ export default function Library() {
       <PageHeader icon={LibraryBig} title="My lectures" subtitle="Classes you joined, with their notes, quizzes and full transcripts." />
       {!online && <p className="conn-banner" role="status"><WifiOff size={18} aria-hidden="true" /> You are offline. Notes you opened before are still available; live classes and transcripts need a connection.</p>}
       {error && !data ? <div className="card"><ErrorState message={error} onRetry={load} /></div> : !data ? <div className="card"><LoadingState label="Loading your lectures…" /></div> : data.classes.length === 0 ? (
-        <div className="card"><EmptyState icon={LibraryBig} title="No lectures yet">When you join a class with its code, it is saved here so you can come back to the transcript and notes.</EmptyState></div>
+        <div className="card"><EmptyState icon={LibraryBig} title="No lectures yet" action={<Link to="/classroom" className="btn btn-primary btn-sm">Join a class</Link>}>When you join a class with its code, it is saved here so you can come back to the transcript and notes.</EmptyState></div>
       ) : (
         <>
           {error && <p className="error-text" role="alert">Showing saved results. {error}</p>}

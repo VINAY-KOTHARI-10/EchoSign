@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Crown, Flame, Trophy } from 'lucide-react';
+
 import * as api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { EmptyState, ErrorState, LoadingState, PageHeader } from '../components/ui';
@@ -37,7 +39,7 @@ export default function Leaderboard() {
 
       {rows === null ? <div className="card"><LoadingState label="Loading the leaderboard…" /></div>
         : error ? <div className="card"><ErrorState message={error} onRetry={load} /></div>
-        : rows.length === 0 ? <div className="card"><EmptyState icon={Trophy} title="No one is on the board yet">Complete a practice session to be the first.</EmptyState></div> : (
+        : rows.length === 0 ? <div className="card"><EmptyState icon={Trophy} title="No one is on the board yet" action={<Link to="/dashboard" className="btn btn-primary btn-sm">Start practising</Link>}>Complete a practice session to be the first.</EmptyState></div> : (
           <>
             <ol className="podium-row" aria-label="Top three">
               {top.map((r, i) => <PodiumCard key={r.userId} row={r} rank={i + 1} isMe={r.userId === user.id} />)}

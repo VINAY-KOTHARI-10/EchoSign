@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Keyboard, Send } from 'lucide-react';
+import { Send } from 'lucide-react';
+
 
 const QUICK_PHRASES = [
   'Please repeat that', 'Please slow down', 'I have a question', "I don't understand",
@@ -17,7 +18,7 @@ export default function TypePanel({ live, onSend }) {
 
   return (
     <div className="card">
-      <h2 className="card-title"><Keyboard size={16} style={{ display: 'inline', verticalAlign: -2 }} /> Type a caption</h2>
+      <h2 className="card-title">Type a caption</h2>
       <form className="composer" style={{ marginTop: 0 }} onSubmit={(e) => { e.preventDefault(); send(typed); }}>
         <input className="input" value={typed} maxLength={500} disabled={!live} placeholder="Type anything…" onChange={(e) => setTyped(e.target.value)} aria-label="Type a caption" />
         <button className="btn btn-primary" disabled={!live || !typed.trim()} aria-label="Send caption"><Send size={18} /></button>

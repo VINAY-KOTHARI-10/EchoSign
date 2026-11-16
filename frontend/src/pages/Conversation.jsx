@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bot, Mic, MicOff, Send, Volume2, VolumeX } from 'lucide-react';
+
 import * as api from '../api';
 import { LANGS, langBcp, langName } from '../lib';
 import useSpeech, { canSpeak, speak, stopSpeaking } from '../hooks/useSpeech';
@@ -86,7 +87,6 @@ export default function Conversation() {
             <div className="grid grid-3 scenario-grid" role="radiogroup" aria-label="Scenario">
               {SCENARIOS.map((s) => (
                 <button key={s.key} type="button" role="radio" aria-checked={scenario.key === s.key} className={`scenario ${scenario.key === s.key ? 'on' : ''}`} onClick={() => setScenario(s)}>
-                  <span className="scenario-emoji" aria-hidden="true">{s.emoji}</span>
                   <b>{s.label}</b><span className="muted">{s.desc}</span>
                 </button>
               ))}
@@ -103,7 +103,7 @@ export default function Conversation() {
   return (
     <>
       <PageHeader icon={Bot} title="AI Partner"
-        subtitle={<span className="row wrap" style={{ gap: 8 }}><span className="chip">{scenario.emoji} {scenario.label}</span><span className="chip">{langName(lang)}</span><span className="chip">{LEVELS.find(([v]) => v === level)[1]}</span>{avg !== null && <StatusBadge status="ok">Average score {avg}</StatusBadge>}</span>}
+        subtitle={<span className="row wrap" style={{ gap: 8 }}><span className="chip">{scenario.label}</span><span className="chip">{langName(lang)}</span><span className="chip">{LEVELS.find(([v]) => v === level)[1]}</span>{avg !== null && <StatusBadge status="ok">Average score {avg}</StatusBadge>}</span>}
         actions={<button className="btn btn-outline btn-sm" onClick={() => { stopSpeaking(); setStarted(false); setMessages([]); setScores([]); setError(''); }}>Change setup</button>} />
 
       <section className="card chat-box" aria-label="Conversation">
@@ -119,7 +119,7 @@ export default function Conversation() {
                     <>
                       {m.translation && <small>{m.translation}</small>}
                       {m.correction && <small className="correction"><b>Correction:</b> {m.correction}</small>}
-                      {m.encouragement && <small>✨ {m.encouragement}</small>}
+                      {m.encouragement && <small>{m.encouragement}</small>}
                     </>
                   )}
                 </div>

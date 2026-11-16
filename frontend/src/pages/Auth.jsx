@@ -1,7 +1,8 @@
+import { Eye, EyeOff } from 'lucide-react';
 // Auth - login and registration screen
 import { useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ArrowRight, Eye, EyeOff, Info, Lock, Mail, User } from 'lucide-react';
+
 import * as api from '../api';
 import { API_URL } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -127,20 +128,19 @@ export default function Auth({ mode }) {
 
           <div className="field">
             <label htmlFor="email">Email</label>
-            <div className="input-wrap"><Mail className="lead" size={18} aria-hidden="true" /><input id="email" className="input has-icon" type="email" required autoComplete="email" value={form.email} onChange={set('email')} placeholder="you@school.edu" aria-invalid={Boolean(error)} aria-describedby={error ? 'form-error' : undefined} /></div>
+            <div className="input-wrap"><input id="email" className="input" type="email" required autoComplete="email" value={form.email} onChange={set('email')} placeholder="you@school.edu" aria-invalid={Boolean(error)} aria-describedby={error ? 'form-error' : undefined} /></div>
           </div>
           {isRegister && (
             <div className="field">
               <label htmlFor="username">Username</label>
-              <div className="input-wrap"><User className="lead" size={18} aria-hidden="true" /><input id="username" className="input has-icon" required minLength={3} maxLength={20} autoComplete="username" value={form.username} onChange={set('username')} placeholder="3–20 characters" aria-describedby="username-hint" /></div>
+              <div className="input-wrap"><input id="username" className="input" required minLength={3} maxLength={20} autoComplete="username" value={form.username} onChange={set('username')} placeholder="3–20 characters" aria-describedby="username-hint" /></div>
               <span id="username-hint" className="hint">Shown next to your captions and in chat.</span>
             </div>
           )}
           <div className="field">
             <label htmlFor="password">Password</label>
             <div className="pw-wrap input-wrap">
-              <Lock className="lead" size={18} aria-hidden="true" />
-              <input id="password" className="input has-icon" type={showPw ? 'text' : 'password'} required minLength={isRegister ? 8 : 1} autoComplete={isRegister ? 'new-password' : 'current-password'} value={form.password} onChange={set('password')} placeholder={isRegister ? 'At least 8 characters' : 'Your password'} aria-describedby={isRegister ? 'pw-hint' : undefined} />
+              <input id="password" className="input" type={showPw ? 'text' : 'password'} required minLength={isRegister ? 8 : 1} autoComplete={isRegister ? 'new-password' : 'current-password'} value={form.password} onChange={set('password')} placeholder={isRegister ? 'At least 8 characters' : 'Your password'} aria-describedby={isRegister ? 'pw-hint' : undefined} />
               <button type="button" className="pw-toggle" onClick={() => setShowPw((v) => !v)} aria-label={showPw ? 'Hide password' : 'Show password'} aria-pressed={showPw}>
                 {showPw ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
               </button>
@@ -148,10 +148,10 @@ export default function Auth({ mode }) {
             {isRegister && <span id="pw-hint" className="hint">Use at least 8 characters.</span>}
           </div>
 
-          {isRegister && <p className="auth-note"><Info size={18} aria-hidden="true" /><span>New accounts start as Members and can join classes. An administrator can make you a Teacher so you can start them.</span></p>}
+          {isRegister && <p className="auth-note"><span>New accounts start as Members and can join classes. An administrator can make you a Teacher so you can start them.</span></p>}
           {error && <div id="form-error" className="error-text" role="alert">{error}</div>}
           <button className="btn btn-primary btn-block btn-lg" disabled={busy}>
-            {busy ? 'Please wait…' : isRegister ? 'Create account' : 'Sign in'}{!busy && <ArrowRight size={18} aria-hidden="true" />}
+            {busy ? 'Please wait…' : isRegister ? 'Create account' : 'Sign in'}
           </button>
 
           {!isRegister && (
