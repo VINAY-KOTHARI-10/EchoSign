@@ -4,10 +4,10 @@
 
 # ── 1. Build the React app ───────────────────────────────────
 FROM node:20-slim AS frontend
-WORKDIR /app/frontend
-COPY frontend/package*.json ./
+WORKDIR /app/frontend-reactjs
+COPY frontend-reactjs/package*.json ./
 RUN npm ci
-COPY frontend/ ./
+COPY frontend-reactjs/ ./
 RUN npm run build
 
 # ── 2. Install backend dependencies (needs the Prisma schema for `prisma generate`) ──
@@ -25,7 +25,7 @@ ENV NODE_ENV=production PORT=10000
 WORKDIR /app
 COPY --from=backend-deps /app/backend/node_modules ./backend/node_modules
 COPY backend/ ./backend/
-COPY --from=frontend /app/frontend/dist ./frontend/dist
+COPY --from=frontend /app/frontend-reactjs/dist ./frontend-reactjs/dist
 RUN mkdir -p backend/logs && chown -R node:node /app
 USER node
 WORKDIR /app/backend

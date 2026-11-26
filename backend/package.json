@@ -17,7 +17,9 @@
     "start:migrate": "prisma migrate deploy && node src/server.js",
     "e2e": "node scripts/run-e2e.js",
     "test:migrations": "node scripts/test-migrations.js",
-    "maintenance": "node scripts/maintenance.js"
+    "maintenance": "node scripts/maintenance.js",
+    "check:email": "node scripts/check-email.js",
+    "lan": "node scripts/lan.js"
   },
   "engines": {
     "node": ">=18.0.0",

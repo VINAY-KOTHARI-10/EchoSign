@@ -35,11 +35,8 @@ router.post('/chat', async (req, res, next) => {
     const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
     if (!GROQ_API_KEY) {
-      // Return demo response if no API key
-      return res.json({
-        success: true,
-        data: getDemoReply(userMessage, language),
-      });
+      // No AI key: say so. (It used to answer with a canned reply and a random score.)
+      return res.status(503).json({ success: false, code: 'AI_UNAVAILABLE', error: 'The AI Partner is unavailable right now. Please try again in a moment.' });
     }
 
     // Build conversation history for context (last 6 messages)
@@ -120,93 +117,23 @@ Reply in this EXACT JSON format only, no other text:
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       logger.error('No JSON in Groq conversation response:', rawText);
-      return res.json({
-        success: true,
-        data: getDemoReply(userMessage, language),
-      });
+      return res.status(503).json({ success: false, code: 'AI_UNAVAILABLE', error: 'The AI Partner is unavailable right now. Please try again in a moment.' });
     }
 
     const result = JSON.parse(jsonMatch[0]);
 
     // Validate required fields
     if (!result.reply) {
-      return res.json({
-        success: true,
-        data: getDemoReply(userMessage, language),
-      });
+      return res.status(503).json({ success: false, code: 'AI_UNAVAILABLE', error: 'The AI Partner is unavailable right now. Please try again in a moment.' });
     }
 
     res.json({ success: true, data: result });
 
   } catch (error) {
     logger.error('[Conversation] Unexpected error FULL:', error);
-    // Always return a response, never crash
-    res.json({
-      success: true,
-      data: getDemoReply(req.body?.userMessage || '', req.body?.language || 'French'),
-    });
+    // Say so plainly; never pretend with a canned reply.
+    res.status(503).json({ success: false, code: 'AI_UNAVAILABLE', error: 'The AI Partner is unavailable right now. Please try again in a moment.' });
   }
 });
-
-/**
- * Demo reply when Groq API is unavailable
- * Used as fallback so app never breaks
- */
-function getDemoReply(userMessage, language) {
-  const replies = {
-    'French': {
-      reply: "C'est très bien! Continuez à pratiquer votre français.",
-      translation: "That's very good! Keep practicing your French.",
-      correction: userMessage.length < 5
-        ? 'Try using longer sentences for better practice.'
-        : null,
-      score: 70 + Math.floor(Math.random() * 25),
-      encouragement: 'Excellent effort! 🌟',
-    },
-    'Spanish': {
-      reply: '¡Muy bien! Sigue practicando tu español cada día.',
-      translation: 'Very good! Keep practicing your Spanish every day.',
-      correction: null,
-      score: 72 + Math.floor(Math.random() * 25),
-      encouragement: '¡Excelente! 🎉',
-    },
-    'German': {
-      reply: 'Sehr gut! Weiter so, du machst große Fortschritte!',
-      translation: 'Very good! Keep it up, you are making great progress!',
-      correction: null,
-      score: 68 + Math.floor(Math.random() * 25),
-      encouragement: 'Wunderbar! 🌟',
-    },
-    'Japanese': {
-      reply: 'とても上手です！練習を続けてください。',
-      translation: 'Very skillful! Please continue practicing.',
-      correction: null,
-      score: 65 + Math.floor(Math.random() * 25),
-      encouragement: 'Great job! 素晴らしい！',
-    },
-    'Italian': {
-      reply: 'Molto bene! Continua a praticare il tuo italiano.',
-      translation: 'Very good! Keep practicing your Italian.',
-      correction: null,
-      score: 71 + Math.floor(Math.random() * 25),
-      encouragement: 'Ottimo lavoro! 🎊',
-    },
-    'Portuguese': {
-      reply: 'Muito bem! Continue praticando seu português.',
-      translation: 'Very good! Keep practicing your Portuguese.',
-      correction: null,
-      score: 70 + Math.floor(Math.random() * 25),
-      encouragement: 'Excelente! 🌟',
-    },
-  };
-
-  return replies[language] || {
-    reply: `Great effort! Keep practicing your ${language}.`,
-    translation: `Great effort! Keep practicing your ${language}.`,
-    correction: null,
-    score: 70 + Math.floor(Math.random() * 25),
-    encouragement: 'Keep going! 🌟',
-  };
-}
 
 module.exports = router;

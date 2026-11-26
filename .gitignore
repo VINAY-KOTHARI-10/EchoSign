@@ -41,3 +41,23 @@ uploads/
 /collect-code.js
 *_code.txt
 e2e/server.log
+
+# generated / private
+frontend-reactjs/public/mediapipe/
+backend/certs/
+
+# Next.js and Vercel build output / local state
+.next/
+.vercel/
+next-env.d.ts
+*.tsbuildinfo
+
+# Local assistant and design-tool files (not part of the project)
+.impeccable/
+.claude/
+.agents/
+.codex/
+.github/skills/
+.github/hooks/
+.github/agents/
+skills-lock.json

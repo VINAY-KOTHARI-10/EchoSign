@@ -216,7 +216,10 @@ async function sendEmail({ to, subject, html }) {
 
     logger.info(`[Email] ✓ Sent "${subject}" → ${to}`);
   } catch (err) {
-    logger.error(`[Email] ✗ Failed to send "${subject}" → ${to}: ${err.message}`);
+    // Brevo explains why in the response body (unverified sender, bad key, blocked account). Log it, or the only
+    // trace is a generic "Bad Request".
+    const reason = (err && err.response && err.response.body && (err.response.body.message || JSON.stringify(err.response.body))) || err.message;
+    logger.error(`[Email] ✗ Failed to send "${subject}" → ${to}: ${reason}${/sender/i.test(String(reason)) ? ' (EMAIL_FROM must be a sender verified in Brevo)' : ''}`);
     // Callers decide what a failure means; it must never look like a success.
     const failure = new Error('Email delivery failed');
     failure.code = 'EMAIL_FAILED';
@@ -225,13 +228,27 @@ async function sendEmail({ to, subject, html }) {
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
+// True when the server has what it needs to send mail. Used to tell people the truth instead of "we sent it".
+const isConfigured = () => Boolean(process.env.BREVO_API_KEY);
+
+// Development only: when no email service is set up, print the code or link in the SERVER log so a developer can
+// continue. Never in production (a code in a log would defeat the point of emailing it), and the send still fails
+// honestly, so the app never claims an email went out.
+const devEcho = (label, value) => {
+  if (process.env.NODE_ENV === 'production' || isConfigured()) return;
+  logger.warn(`[Email:DEV ONLY] ${label}: ${value}   (no BREVO_API_KEY, so nothing was emailed)`);
+};
+
 const EmailService = {
+  isConfigured,
   sendWelcome:         (to, data) => sendEmail({ to, ...templates.welcome(data) }),
   sendVerifyEmail:     (to, data) => sendEmail({ to, ...templates.verifyEmail(data) }),
-  sendPasswordReset:   (to, data) => sendEmail({ to, ...templates.passwordReset(data) }),
+  sendPasswordReset:   (to, data) => { devEcho(`password reset link for ${to}`, data.resetUrl); return sendEmail({ to, ...templates.passwordReset(data) }); },
   sendPasswordChanged: (to, data) => sendEmail({ to, ...templates.passwordChanged(data) }),
   sendOAuthWelcome:    (to, data) => sendEmail({ to, ...templates.oauthWelcome(data) }),
-  sendLoginOtp:        (to, data) => sendEmail({ to, ...templates.loginOtp(data) }),
+  // Used by `npm run check:email` to prove the key and sender work before anyone depends on them.
+  sendTest:            (to) => sendEmail({ to, subject: 'EchoSign test email', html: '<p>If you can read this, EchoSign can send email.</p>' }),
+  sendLoginOtp:        (to, data) => { devEcho(`login code for ${to}`, data.otp); return sendEmail({ to, ...templates.loginOtp(data) }); },
 };
 
 module.exports = EmailService;

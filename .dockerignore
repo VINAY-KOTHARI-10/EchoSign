@@ -5,12 +5,12 @@
 **/logs
 **/coverage
 .git
-frontend/dist
+frontend-reactjs/dist
 docs
 *.md
 collect-code.js
 *_code.txt
 backend/e2e
 backend/tests
-frontend/tests
-frontend/scripts
+frontend-reactjs/tests
+frontend-reactjs/scripts

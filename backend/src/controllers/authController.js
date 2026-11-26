@@ -45,7 +45,7 @@ const invalidateSession = jwtHelper.invalidateSession || null;
 const invalidateAllSessions = jwtHelper.invalidateAllSessions || null;
 const getActiveSessions = jwtHelper.getActiveSessions || null;
 
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const { frontendFor, originFromRequest, defaultFrontend } = require('../config/frontends');
 
 // ── Cookie helpers ────────────────────────────────────────────────────────────
 const COOKIE_TTL = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -111,7 +111,10 @@ const register = async (req, res, next) => {
     const existing = await prisma.user.findFirst({
       where: { OR: [{ email }, { username }] },
     });
-    if (existing) {
+    // An account whose email was never confirmed (nobody entered the emailed code) must not lock that address or
+    // username forever: signing up again with the same email takes it over and sends a fresh code.
+    const takeOver = existing && existing.emailVerified === false && existing.email === email ? existing : null;
+    if (existing && !takeOver) {
       throw new AppError(
         existing.email === email ? 'Email already registered' : 'Username taken',
         409,
@@ -121,9 +124,15 @@ const register = async (req, res, next) => {
 
     const passwordHash = await bcrypt.hash(password, 12);
 
+    if (takeOver) {
+      const nameTaken = username !== takeOver.username && await prisma.user.findFirst({ where: { username, NOT: { id: takeOver.id } } });
+      if (nameTaken) throw new AppError('Username taken', 409, 'DUPLICATE_USER');
+      await prisma.user.update({ where: { id: takeOver.id }, data: { passwordHash, username } });
+    }
+
     // ONLY fields that exist in current schema.prisma
     // NOTE: add emailVerifyToken/emailVerifyExpires to schema to re-enable email verification
-    const user = await prisma.$transaction(async (tx) => {
+    const user = takeOver ? { ...takeOver, username, passwordHash } : await prisma.$transaction(async (tx) => {
       const newUser = await tx.user.create({
         data: {
           email,
@@ -161,13 +170,7 @@ const register = async (req, res, next) => {
     try { await EmailService.sendLoginOtp(user.email, { otp, expiryMinutes: 5 }); }
     catch (err) { emailSent = false; logger.error(`[OTP] Email send failed for ${user.email}: ${err.message}`); }
 
-    // Welcome email is a courtesy: non-blocking
-
-    const dashboardUrl = `${FRONTEND_URL}/classroom`;
-    EmailService.sendWelcome(email, {
-      username,
-      dashboardUrl
-    }).catch(err => logger.error(`Welcome email error: ${err}`));
+    // The welcome email is sent after the code is confirmed (see verifyOtp), so only real addresses receive it.
 
     // Issue pre-auth token (short-lived, purpose: 'otp' — cannot access protected routes)
     const preAuthToken = signPreAuthToken({ userId: user.id, email: user.email });
@@ -328,6 +331,7 @@ const verifyOtp = async (req, res, next) => {
     await OtpRecord.invalidate(userId);
 
     // 6. Update user's emailVerified status to true
+    const wasVerified = Boolean((await prisma.user.findUnique({ where: { id: userId }, select: { emailVerified: true } }).catch(() => null))?.emailVerified);
     await prisma.user.update({
       where: { id: userId },
       data: { emailVerified: true },
@@ -355,6 +359,12 @@ const verifyOtp = async (req, res, next) => {
     }).catch(err => logger.warn('lastActiveAt update failed:', err.message));
 
     logger.info(`[OTP] Login fully verified for ${email}`);
+
+    // First confirmation of this address: now it is worth sending the welcome email (courtesy, non-blocking).
+    if (!wasVerified) {
+      EmailService.sendWelcome(user.email, { username: user.username, dashboardUrl: `${frontendFor(originFromRequest(req))}/classroom` })
+        .catch((err) => logger.error(`Welcome email error: ${err}`));
+    }
 
     return res.json({ success: true, data: { user: safeUser({ ...user }) } });
 
@@ -449,14 +459,19 @@ const refreshToken = async (req, res, next) => {
     if (!token) throw new AppError('No refresh token', 401, 'NO_REFRESH_TOKEN');
 
     // verify refresh token exists and not revoked (any failure here means "log in again", never a server error)
+    // The user row and the session check are independent database round trips (PostgreSQL and MongoDB, both remote),
+    // so start the user lookup from the token's claimed id while the token is verified. The claimed id is only used to
+    // prefetch: if verification disagrees with it, the real id is looked up instead.
+    const lookup = (id) => prisma.user.findUnique({ where: { id }, select: { id: true, email: true, username: true, role: true } });
+    const claimed = (() => { try { return JSON.parse(Buffer.from(String(token).split('.')[1], 'base64url').toString()).id; } catch { return null; } })();
+    const prefetch = typeof claimed === 'string' ? lookup(claimed) : null;
+    if (prefetch) prefetch.catch(() => {}); // a failure is handled where the result is used
+
     let decoded;
     try { decoded = await verifyRefreshToken(token); }
     catch (err) { throw new AppError('Session expired. Please log in again.', 401, 'INVALID_REFRESH'); }
 
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      select: { id: true, email: true, username: true, role: true },
-    });
+    const user = await (prefetch && decoded.id === claimed ? prefetch : lookup(decoded.id));
     if (!user) throw new AppError('User not found', 401);
 
     // Rotate tokens atomically in MongoDB-backed session store
@@ -520,7 +535,9 @@ const googleCallback = async (req, res) => {
     setRefreshCookie(res, refreshToken);
 
     // Clean up temporary passport session and redirect to frontend dashboard
-    const frontend = process.env.FRONTEND_URL || 'http://localhost:5173';
+    // Back to the website the person started from (remembered when sign-in began), else the main one.
+    const frontend = frontendFor(req.cookies && req.cookies.oauth_origin);
+    res.clearCookie('oauth_origin');
     if (req.logout) {
       try { req.logout(); } catch (e) { /* ignore */ }
     }
@@ -530,7 +547,7 @@ const googleCallback = async (req, res) => {
       res.redirect(`${frontend}/classroom`);
     }
   } catch (err) {
-    const frontend = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const frontend = frontendFor(req.cookies && req.cookies.oauth_origin);
     res.redirect(`${frontend}/?error=oauth_failed`);
   }
 };
@@ -547,12 +564,16 @@ const verifyEmail = async (req, res, next) => {
   //   ALTER TABLE users ADD COLUMN IF NOT EXISTS "passwordResetToken" TEXT;
   //   ALTER TABLE users ADD COLUMN IF NOT EXISTS "passwordResetExpires" TIMESTAMPTZ;
   // Then remove this stub and restore the full implementation.
-  res.redirect(`${FRONTEND_URL}/classroom`);
+  res.redirect(`${defaultFrontend()}/classroom`);
 };
 
 const requestPasswordReset = async (req, res, next) => {
   try {
     const { email } = req.body;
+
+    if (typeof EmailService.isConfigured === 'function' && !EmailService.isConfigured()) {
+      throw new AppError('Password reset emails are not set up on this server yet. Ask an administrator to configure email.', 503, 'EMAIL_NOT_CONFIGURED');
+    }
 
     // Always return the same message to prevent email enumeration
     const successMsg = 'If that email exists, a reset link has been sent.';
@@ -576,7 +597,7 @@ const requestPasswordReset = async (req, res, next) => {
     });
 
     // Send email
-    const resetUrl = `${FRONTEND_URL}/reset-password/${resetToken}`;
+    const resetUrl = `${frontendFor(originFromRequest(req))}/reset-password/${resetToken}`;
 
     // Same reply either way (so the response never reveals whether the email exists); the failure is logged.
     try {

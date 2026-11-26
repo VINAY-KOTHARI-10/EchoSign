@@ -5,6 +5,8 @@
 'use strict';
 require('dotenv').config();
 const http = require('http');           // Node.js core: HTTP module
+const https = require('https');         // used only when a certificate is configured (npm run lan)
+const fs = require('fs');
 const path = require('path');           // Node.js core: Path module
 const { EventEmitter } = require('events'); // Node.js core: EventEmitter
 const HOST = "0.0.0.0";
@@ -28,7 +30,12 @@ class ServerEvents extends EventEmitter {
 const serverEvents = new ServerEvents();
 
 // ─── Create HTTP Server manually (Node.js core) ───────────────────────────────
-const server = http.createServer(app);
+// Plain HTTP normally. With HTTPS_KEY_FILE and HTTPS_CERT_FILE set (npm run lan), HTTPS, which browsers require for the
+// camera on any address other than localhost.
+const tls = process.env.HTTPS_KEY_FILE && process.env.HTTPS_CERT_FILE && fs.existsSync(process.env.HTTPS_KEY_FILE) && fs.existsSync(process.env.HTTPS_CERT_FILE)
+  ? { key: fs.readFileSync(process.env.HTTPS_KEY_FILE), cert: fs.readFileSync(process.env.HTTPS_CERT_FILE) }
+  : null;
+const server = tls ? https.createServer(tls, app) : http.createServer(app);
 
 // ─── Initialize Socket.IO ─────────────────────────────────────────────────────
 const io = initSocket(server);
@@ -51,7 +58,7 @@ async function bootstrap() {
     server.listen(PORT, () => {
       logger.info(`🚀 EchoSign server running on port ${PORT}`);
       logger.info(`📡 Environment: ${process.env.NODE_ENV}`);
-      logger.info(`🔗 API Base: http://localhost:${PORT}/api/v1`);
+      logger.info(`🔗 API Base: ${tls ? 'https' : 'http'}://localhost:${PORT}/api/v1`);
       serverEvents.emit('server:ready', PORT);
     });
 

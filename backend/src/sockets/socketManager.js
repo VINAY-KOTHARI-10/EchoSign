@@ -33,6 +33,9 @@ const logger = require('../utils/logger');
 const { isChatRoom } = require('../config/chatRooms');
 const { PresenceRegistry } = require('./presenceRegistry');
 const codeGuess = require('../utils/codeGuess');
+const { canInClass, classRoleFor } = require('../config/permissions');
+const { mustWait } = require('../utils/classTiming');
+const { MeetRooms, attachMeet } = require('./meetManager');
 
 const CAPTION_SOURCES = ['SPEECH', 'SIGN', 'TEXT'];
 const MAX_MISSED = 500;
@@ -86,6 +89,7 @@ function initSocket(httpServer) {
     maxHttpBufferSize: 64 * 1024, // no event legitimately needs more
   });
   const registry = new PresenceRegistry();
+  const meetRooms = new MeetRooms(); // Sign Meet rooms (in memory only; nothing is stored)
 
   // Batch noisy broadcasts: 100 students joining at once should cause a handful of updates, not 100.
   const timers = new Map();
@@ -151,7 +155,9 @@ function initSocket(httpServer) {
       next();
     } catch (err) {
       logger.warn(`Socket auth failed: ${err.message}`);
-      next(new Error('Authentication failed'));
+      // A database that cannot be reached right now is not a bad token: say so, so the client simply retries.
+      const transientDb = ['P1001', 'P1002', 'P1008', 'P1017', 'P2024'].includes(err.code) || err.name === 'PrismaClientInitializationError';
+      next(new Error(transientDb ? 'Service busy, please retry' : 'Authentication failed'));
     }
   });
 
@@ -164,6 +170,7 @@ function initSocket(httpServer) {
     if (!connectedUsers.has(user.id)) connectedUsers.set(user.id, new Set());
     connectedUsers.get(user.id).add(socket.id);
     socket.join(`user:${user.id}`);
+    attachMeet(io, socket, meetRooms, logger);
     broadcastOnline();
 
     // After the access token expires, events are refused until the client sends a fresh one (auth:refresh).
@@ -189,11 +196,11 @@ function initSocket(httpServer) {
 
     // Host, site admin, or a CAPTIONER may correct captions and lower hands.
     const isModerator = async (classroom) => {
-      if (classroom.hostId === user.id || user.role === 'ADMIN') return true;
+      if (classRoleFor(classroom, user) === 'HOST') return true;
       const member = await prisma.classroomMember.findUnique({
         where: { classroomId_userId: { classroomId: classroom.id, userId: user.id } }, select: { role: true },
       });
-      return member?.role === 'CAPTIONER';
+      return canInClass(classRoleFor(classroom, user, member?.role), 'captions.edit_any');
     };
 
     // ── Community chat ───────────────────────────────────────────────────────
@@ -231,10 +238,7 @@ function initSocket(httpServer) {
     });
 
     // ── Classroom ────────────────────────────────────────────────────────────
-    const memberRole = (classroom, participants) => {
-      if (classroom.hostId === user.id || user.role === 'ADMIN') return 'HOST';
-      return (participants.find((p) => p.userId === user.id) || {}).role || 'STUDENT';
-    };
+    const memberRole = (classroom, participants) => classRoleFor(classroom, user, (participants.find((p) => p.userId === user.id) || {}).role);
 
     socket.on('class:join', async (payload, ack) => {
       const reply = safeAck(ack);
@@ -248,6 +252,9 @@ function initSocket(httpServer) {
         const classroom = await prisma.classroom.findUnique({ where: { code } });
         if (!classroom) { await codeGuess.recordMiss(user.id); return reply({ ok: false, error: 'Classroom not found', code: 'NOT_FOUND' }); }
         if (!classroom.active) return reply({ ok: false, error: 'This class has ended', code: 'ENDED' });
+        if (mustWait(classroom, classRoleFor(classroom, user))) {
+          return reply({ ok: false, error: 'This class has not started yet.', code: 'NOT_STARTED', startsAt: new Date(classroom.scheduledAt).toISOString() });
+        }
 
         const already = socket.joinedClasses.has(code);
         socket.join(`class:${classroom.id}`);

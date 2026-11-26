@@ -8,12 +8,13 @@ const { AppError } = require('../middleware/errorMiddleware');
 const { RateLimiterMemory } = require('rate-limiter-flexible');
 const { chatJSON, MODEL } = require('../utils/groq');
 const logger = require('../utils/logger');
-const { can } = require('../config/permissions');
+const { can, canInClass, classRoleFor } = require('../config/permissions');
+const { mustWait } = require('../utils/classTiming');
 const audit = require('../Services/auditService');
 const codeGuess = require('../utils/codeGuess');
 const { summarizeLecture, askLecture } = require('../utils/lectureAi');
 const { createTranslator, validateInput } = require('../utils/translation');
-const { resolveLanguage } = require('../config/languages');
+const { activeLanguages, makeResolver } = require('../config/languages');
 const { pageCaptions } = require('../utils/captionPages');
 const { prismaSource } = require('../utils/lectureSource');
 const { streamTranscript } = require('../utils/transcriptStream');
@@ -58,14 +59,14 @@ const findByCode = async (code, user) => {
 
 // HOST | CAPTIONER | STUDENT for this user in this classroom. Site admins act as hosts.
 const roleOf = async (classroom, user) => {
-  if (classroom.hostId === user.id || user.role === 'ADMIN') return 'HOST';
+  if (classRoleFor(classroom, user) === 'HOST') return 'HOST'; // host or admin: no lookup needed
   const m = await prisma.classroomMember.findUnique({
     where: { classroomId_userId: { classroomId: classroom.id, userId: user.id } },
     select: { role: true },
   });
-  return m?.role === 'CAPTIONER' ? 'CAPTIONER' : 'STUDENT';
+  return classRoleFor(classroom, user, m?.role);
 };
-const canModerate = (role) => role === 'HOST' || role === 'CAPTIONER';
+const canModerate = (role) => canInClass(role, 'captions.edit_any');
 
 // Reading a class's captions, notes or translations needs more than knowing its code: the person must be the host,
 // an admin, or someone who has joined the class. Returns the in-class role.
@@ -174,7 +175,7 @@ const getClassroom = async (req, res, next) => {
 const updateClassroom = async (req, res, next) => {
   try {
     const classroom = await findByCode(req.params.code, req.user);
-    if ((await roleOf(classroom, req.user)) !== 'HOST') throw new AppError('Only the host can change this classroom', 403);
+    if (!canInClass(await roleOf(classroom, req.user), 'class.settings')) throw new AppError('Only the host can change this classroom', 403);
 
     const data = {};
     if (req.body.title !== undefined) {
@@ -229,6 +230,7 @@ const postCaption = async (req, res, next) => {
   try {
     const classroom = await findByCode(req.params.code, req.user);
     if (!classroom.active) throw new AppError('This class has ended', 409, 'ENDED');
+    if (mustWait(classroom, classRoleFor(classroom, req.user))) throw new AppError('This class has not started yet.', 409, 'NOT_STARTED');
     await requireAccess(classroom, req.user);
     const text = String(req.body.text || '').replace(/\s+/g, ' ').trim().slice(0, 500);
     if (!text) throw new AppError('Caption text is required', 400);
@@ -349,7 +351,7 @@ const editCaption = async (req, res, next) => {
 const endClassroom = async (req, res, next) => {
   try {
     const classroom = await findByCode(req.params.code, req.user);
-    if ((await roleOf(classroom, req.user)) !== 'HOST') throw new AppError('Only the host can end this classroom', 403);
+    if (!canInClass(await roleOf(classroom, req.user), 'class.settings')) throw new AppError('Only the host can end this classroom', 403);
     const updated = await prisma.classroom.update({
       where: { id: classroom.id },
       data: { active: false, endedAt: classroom.endedAt || new Date() },
@@ -367,7 +369,7 @@ const endClassroom = async (req, res, next) => {
 const reopenClassroom = async (req, res, next) => {
   try {
     const classroom = await findByCode(req.params.code, req.user);
-    if ((await roleOf(classroom, req.user)) !== 'HOST') throw new AppError('Only the host can reopen this classroom', 403);
+    if (!canInClass(await roleOf(classroom, req.user), 'class.settings')) throw new AppError('Only the host can reopen this classroom', 403);
     const updated = await prisma.classroom.update({
       where: { id: classroom.id }, data: { active: true, endedAt: null, scheduledAt: null }, include,
     });
@@ -393,7 +395,7 @@ const translate = async (req, res, next) => {
     const classroom = await findByCode(req.params.code, req.user);
     await requireAccess(classroom, req.user);
     let input;
-    try { input = validateInput({ texts: req.body.texts, target: req.body.target }, resolveLanguage); }
+    try { input = validateInput({ texts: req.body.texts, target: req.body.target }, makeResolver(await activeLanguages(prisma))); }
     catch (err) { throw new AppError(err.message, err.status || 400, 'INVALID_TRANSLATION_REQUEST'); }
     try { await translateLimiter.consume(req.user.id); } catch { throw new AppError('Too many translation requests, slow down', 429, 'RATE_LIMITED'); }
 
@@ -414,7 +416,7 @@ const translate = async (req, res, next) => {
 const generateSummary = async (req, res, next) => {
   try {
     const classroom = await findByCode(req.params.code, req.user);
-    if (!canModerate(await roleOf(classroom, req.user))) throw new AppError('Only the host or a captioner can generate a summary', 403);
+    if (!canInClass(await roleOf(classroom, req.user), 'notes.generate')) throw new AppError('Only the host or a captioner can generate a summary', 403);
 
     const count = await prisma.caption.count({ where: { classroomId: classroom.id } });
     if (count < 3) throw new AppError('Not enough captions to summarise yet', 400);
@@ -471,7 +473,7 @@ const SPEAKING_WPM = 150; // words per minute used to estimate speaking time
 const getInsights = async (req, res, next) => {
   try {
     const classroom = await findByCode(req.params.code, req.user);
-    if (!canModerate(await roleOf(classroom, req.user))) throw new AppError('Only the host or a captioner can view insights', 403);
+    if (!canInClass(await roleOf(classroom, req.user), 'insights.view')) throw new AppError('Only the host or a captioner can view insights', 403);
 
     const members = await prisma.classroomMember.findMany({ where: { classroomId: classroom.id }, orderBy: { firstJoinedAt: 'asc' } });
 
@@ -522,7 +524,7 @@ const getInsights = async (req, res, next) => {
 const setMemberRole = async (req, res, next) => {
   try {
     const classroom = await findByCode(req.params.code, req.user);
-    if ((await roleOf(classroom, req.user)) !== 'HOST') throw new AppError('Only the host can change roles', 403);
+    if (!canInClass(await roleOf(classroom, req.user), 'class.roles')) throw new AppError('Only the host can change roles', 403);
     const role = req.body.role;
     if (!['CAPTIONER', 'STUDENT'].includes(role)) throw new AppError('Invalid role', 400);
     if (req.params.userId === classroom.hostId) throw new AppError('The host already has full control', 400);

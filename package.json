@@ -7,14 +7,14 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "install:all": "npm --prefix frontend ci && npm --prefix backend ci",
-    "build": "npm --prefix frontend run build && npm --prefix backend run prisma:generate",
+    "install:all": "npm --prefix frontend-reactjs ci && npm --prefix backend ci",
+    "build": "npm --prefix frontend-reactjs run build && npm --prefix backend run prisma:generate",
     "migrate": "npm --prefix backend run prisma:migrate",
     "start": "npm --prefix backend start",
     "live": "npm --prefix backend run live",
     "dev:backend": "npm --prefix backend run dev",
-    "dev:frontend": "npm --prefix frontend run dev",
-    "test": "npm --prefix frontend test && npm --prefix backend test -- --coverage=false",
+    "dev:frontend": "npm --prefix frontend-reactjs run dev",
+    "test": "npm --prefix frontend-reactjs test && npm --prefix backend test -- --coverage=false",
     "e2e": "npm --prefix backend run e2e",
     "test:migrations": "npm --prefix backend run test:migrations",
     "maintenance": "npm --prefix backend run maintenance --"

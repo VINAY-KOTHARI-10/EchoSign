@@ -12,6 +12,7 @@ const originOf = (u) => { try { return new URL(u).origin; } catch { return null;
 const allowedOrigins = [
   ...devOrigins,
   ...[originOf(process.env.FRONTEND_URL)].filter(Boolean),
+  ...String(process.env.FRONTEND_URLS || '').split(',').map((o) => originOf(o.trim())).filter(Boolean), // more websites served by this one backend
   ...(process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
     : []),

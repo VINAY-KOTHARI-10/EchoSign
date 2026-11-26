@@ -60,6 +60,21 @@ async function retention() {
   say(`Audit log entries older than ${auditDays} days: ${oldAudit}`);
   if (apply && oldAudit) say(`  deleted ${(await prisma.auditLog.deleteMany({ where: { createdAt: { lt: auditCut } } })).count}`);
 
+  // Accounts that never entered the emailed code. They cannot sign in, so they hold no data; they only occupy an
+  // email address and username. (Signing up again with the same email already replaces them.)
+  const unverifiedDays = Number(process.env.UNVERIFIED_ACCOUNT_DAYS) || 7;
+  const unverifiedWhere = { emailVerified: false, googleId: null, createdAt: { lt: new Date(Date.now() - unverifiedDays * 86400000) } };
+  let stale = [];
+  try { stale = await prisma.user.findMany({ where: unverifiedWhere, select: { id: true } }); }
+  catch (err) { say(`Could not read unverified accounts (${err.code || err.message}).`); }
+  say(`Accounts never confirmed by email, older than ${unverifiedDays} days: ${stale.length}`);
+  if (apply && stale.length) {
+    const ids = stale.map((u) => u.id);
+    await prisma.userProfile.deleteMany({ where: { userId: { in: ids } } });
+    say(`  deleted ${(await prisma.user.deleteMany({ where: { id: { in: ids } } })).count}`);
+    await UserActivity.deleteMany({ userId: { $in: ids } }).catch(() => {});
+  }
+
   const classDays = Number(process.env.CLASS_RETENTION_DAYS) || 0;
   if (!classDays) { say('CLASS_RETENTION_DAYS is not set: ended classes are kept (and so are their transcripts).'); return; }
   const classCut = new Date(Date.now() - classDays * 86400000);

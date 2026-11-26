@@ -23,6 +23,7 @@ const PERMISSIONS = {
   // Learning
   'practice.use':         { roles: ['USER', 'TEACHER', 'ADMIN'], label: 'Practice, AI partner, sign lab, progress' },
   'community.chat':       { roles: ['USER', 'TEACHER', 'ADMIN'], label: 'Use community chat' },
+  'meet.use':             { roles: ['USER', 'TEACHER', 'ADMIN'], label: 'Join Sign Meet video meetings (works on a hotspot)' },
   // Administration
   'admin.panel':          { roles: ['ADMIN'], label: 'Open the admin panel' },
   'users.view':           { roles: ['ADMIN'], label: 'View all users' },
@@ -48,6 +49,36 @@ const matrix = () => Object.entries(PERMISSIONS).map(([key, { roles, label }]) =
 }));
 
 const IN_CLASS_ROLES = ['STUDENT', 'CAPTIONER', 'HOST'];
-const canModerateClass = (classRole) => classRole === 'HOST' || classRole === 'CAPTIONER';
 
-module.exports = { PERMISSIONS, can, permissionsFor, matrix, effectiveRole, IN_CLASS_ROLES, canModerateClass };
+// Rights INSIDE one class. A person's account role (above) says what they may do in the app; their role in a class says
+// what they may do there: the host is the teacher who started it (or any admin), a captioner is a student the host
+// trusts, everyone else who joined is a student. Every class check (HTTP controllers and the socket layer) reads this
+// table, so a rule is changed in exactly one place.
+const CLASS_PERMISSIONS = {
+  'captions.send':     { roles: ['HOST', 'CAPTIONER', 'STUDENT'], label: 'Read and send captions, raise a hand, use notes and ask the lecture' },
+  'captions.edit_any': { roles: ['HOST', 'CAPTIONER'], label: 'Correct anyone\'s caption and lower raised hands (students can correct only their own)' },
+  'notes.generate':    { roles: ['HOST', 'CAPTIONER'], label: 'Generate lecture notes' },
+  'insights.view':     { roles: ['HOST', 'CAPTIONER'], label: 'See class insights and attendance' },
+  'class.settings':    { roles: ['HOST'], label: 'Change class settings, end and reopen the class' },
+  'class.roles':       { roles: ['HOST'], label: 'Give or remove captioner rights' },
+};
+
+// The in-class role for someone, as a pure function so HTTP and sockets cannot disagree. `memberRole` is the role
+// stored on their membership row, if they have one. Site admins always act as the host.
+const classRoleFor = (classroom, user, memberRole) => {
+  if (classroom && user && (classroom.hostId === user.id || user.role === 'ADMIN')) return 'HOST';
+  return memberRole === 'CAPTIONER' ? 'CAPTIONER' : 'STUDENT';
+};
+
+const canInClass = (classRole, permission) => {
+  const rule = CLASS_PERMISSIONS[permission];
+  return Boolean(rule && rule.roles.includes(classRole));
+};
+
+const canModerateClass = (classRole) => canInClass(classRole, 'captions.edit_any');
+
+const classMatrix = () => Object.entries(CLASS_PERMISSIONS).map(([key, { roles, label }]) => ({
+  key, label, HOST: roles.includes('HOST'), CAPTIONER: roles.includes('CAPTIONER'), STUDENT: roles.includes('STUDENT'),
+}));
+
+module.exports = { PERMISSIONS, can, permissionsFor, matrix, effectiveRole, IN_CLASS_ROLES, CLASS_PERMISSIONS, classRoleFor, canInClass, canModerateClass, classMatrix };

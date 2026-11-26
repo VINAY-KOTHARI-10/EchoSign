@@ -29,7 +29,9 @@ const analyzeSpeech = async (req, res, next) => {
     const groqAnalysis = await callGroqAPI(targetText, transcribedText, language);
 
     // ─── Store in MongoDB ─────────────────────────────────────────────────────
-    const record = await PronunciationRecord.create({
+    // Only real AI analyses are stored. A plain word comparison is shown to the person but never recorded, so it can
+    // never count towards pronunciation statistics.
+    const record = groqAnalysis.ai === false ? null : await PronunciationRecord.create({
       userId,
       sessionId: sessionId || `session_${Date.now()}`,
       language,
@@ -62,9 +64,9 @@ const analyzeSpeech = async (req, res, next) => {
 
     // ─── Emit real-time update via Socket.IO ──────────────────────────────────
     const io = req.app.get('io');
-    if (io) {
+    if (io && record) {
       io.to(`user:${userId}`).emit('pronunciation:analyzed', {
-        recordId: record._id,
+        recordId: record ? record._id : null,
         accuracy: groqAnalysis.overallAccuracy,
         timestamp: new Date(),
       });
@@ -73,7 +75,9 @@ const analyzeSpeech = async (req, res, next) => {
     res.json({
       success: true,
       data: {
-        recordId: record._id,
+        recordId: record ? record._id : null,
+        ai: groqAnalysis.ai !== false,
+        provider: groqAnalysis.provider || 'groq',
         overallAccuracy: groqAnalysis.overallAccuracy,
         fluencyScore: groqAnalysis.fluencyScore,
         intonationScore: groqAnalysis.intonationScore,
@@ -92,14 +96,14 @@ const analyzeSpeech = async (req, res, next) => {
 /**
  * Groq API call for speech analysis
  * Model is set in utils/groq.js (GROQ_MODEL)
- * Falls back to mock if API key missing or error
+ * Falls back to a plain word comparison (basicComparison) if the API key is missing or the call fails
  */
 async function callGroqAPI(targetText, transcribedText, language) {
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
   if (!GROQ_API_KEY) {
-    logger.warn('GROQ_API_KEY not set — using mock analysis');
-    return generateMockAnalysis(targetText, transcribedText);
+    logger.warn('GROQ_API_KEY not set: giving a word-match comparison only');
+    return basicComparison(targetText, transcribedText, 'no AI key configured');
   }
 
   const prompt = `You are an expert speech pathologist and language teacher specializing in pronunciation analysis.
@@ -198,54 +202,43 @@ Respond ONLY with this exact JSON format, no extra text, no markdown, no backtic
 
   } catch (error) {
     logger.error('Groq API call failed:', error.message);
-    // Fallback to mock analysis
-    return generateMockAnalysis(targetText, transcribedText);
+    // Fall back to an honest word comparison; never to invented scores.
+    return basicComparison(targetText, transcribedText, 'AI call failed');
   }
 }
 
 /**
- * Mock analysis for development/testing
- * Used when GROQ_API_KEY is not set or API fails
+ * What we can honestly say when no AI analysis is available (no key, or the AI call failed): which of the phrase's words
+ * the speech recogniser heard. That is a real comparison of real text. Everything that needs actual analysis of how the
+ * person sounded (fluency, intonation, stress, sounds) is left null; nothing is invented or randomised.
+ * The result is marked `ai: false` so the app can label it and never saves it as a pronunciation assessment.
  */
-function generateMockAnalysis(targetText, transcribedText) {
-  const words = targetText.split(' ');
-  const spokenWords = transcribedText.split(' ');
+function basicComparison(targetText, transcribedText, reason = 'AI analysis unavailable') {
+  const clean = (w) => w.toLowerCase().replace(/[^\p{L}\p{N}']/gu, '');
+  const targetWords = String(targetText || '').split(/\s+/).filter(Boolean);
+  const heard = new Map();
+  String(transcribedText || '').split(/\s+/).map(clean).filter(Boolean).forEach((w) => heard.set(w, (heard.get(w) || 0) + 1));
 
-  let matches = 0;
-  words.forEach((w, i) => {
-    if (spokenWords[i] && w.toLowerCase() === spokenWords[i].toLowerCase()) {
-      matches++;
-    }
+  const wordsBreakdown = targetWords.map((word) => {
+    const key = clean(word);
+    const left = heard.get(key) || 0;
+    if (key && left > 0) { heard.set(key, left - 1); return { word, score: 100, status: 'correct', note: null }; }
+    return { word, score: 0, status: 'missed', note: 'This word was not heard' };
   });
-
-  const accuracy = Math.round((matches / words.length) * 100);
+  const matched = wordsBreakdown.filter((w) => w.status === 'correct').length;
 
   return {
-    overallAccuracy: Math.min(100, Math.max(0, accuracy + Math.floor(Math.random() * 10))),
-    fluencyScore: Math.round(60 + Math.random() * 35),
-    intonationScore: Math.round(55 + Math.random() * 40),
-    stressScore: Math.round(50 + Math.random() * 45),
-    wordsBreakdown: words.map((word, i) => ({
-      word,
-      score: spokenWords[i]?.toLowerCase() === word.toLowerCase()
-        ? 95 + Math.round(Math.random() * 5)
-        : Math.round(50 + Math.random() * 30),
-      status: spokenWords[i]?.toLowerCase() === word.toLowerCase() ? 'correct' : 'close',
-      note: spokenWords[i]?.toLowerCase() !== word.toLowerCase()
-        ? `Try emphasizing the vowel sound in "${word}"`
-        : null,
-    })),
-    phonemeAnalysis: [
-      { phoneme: '/θ/', expected: 'th', spoken: 'd', score: 65, issue: 'substitution' },
-      { phoneme: '/æ/', expected: 'a', spoken: 'a', score: 92, issue: null },
-    ],
-    suggestions: [
-      'Focus on the "th" sound - place your tongue between your teeth',
-      'Your vowel sounds are clear - great work!',
-      'Try slowing down slightly for better articulation',
-    ],
-    summary: 'Good pronunciation attempt with room for improvement on consonant clusters. Focus on dental fricatives for more natural speech.',
-    raw: { mock: true, provider: 'mock' },
+    ai: false,
+    provider: 'basic',
+    overallAccuracy: targetWords.length ? Math.round((matched / targetWords.length) * 100) : 0,
+    fluencyScore: null,
+    intonationScore: null,
+    stressScore: null,
+    wordsBreakdown,
+    phonemeAnalysis: [],
+    suggestions: ['AI pronunciation feedback is unavailable right now. This only compares the words you said with the phrase; it does not judge how you sounded.'],
+    summary: 'Word match only (no AI analysis).',
+    raw: { provider: 'basic', reason },
   };
 }
 
@@ -337,4 +330,4 @@ const getSkillBreakdown = async (req, res, next) => {
   }
 };
 
-module.exports = { analyzeSpeech, getPronunciationHistory, getAccuracyTrend, getSkillBreakdown };
+module.exports = { analyzeSpeech, getPronunciationHistory, getAccuracyTrend, getSkillBreakdown, basicComparison };

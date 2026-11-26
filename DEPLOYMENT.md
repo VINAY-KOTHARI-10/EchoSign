@@ -1,6 +1,6 @@
 # Deploying EchoSign
 
-**Canonical architecture: one service.** The Express backend serves the API, the Socket.IO live-caption connection and the built React app (`frontend/dist`) from a single address. No CORS to configure, a first-party login cookie, WebSockets on the same host, and one thing to deploy. Everything below starts from that.
+**Canonical architecture: one service.** The Express backend serves the API, the Socket.IO live-caption connection and the built React app (`frontend-reactjs/dist`) from a single address. No CORS to configure, a first-party login cookie, WebSockets on the same host, and one thing to deploy. Everything below starts from that.
 
 ```
 Browser ──HTTPS──▶  EchoSign service (Docker)
@@ -33,12 +33,13 @@ Generate each secret with `node -e "console.log(require('crypto').randomBytes(48
 | `DATABASE_URL` / `DIRECT_URL` | yes | Neon pooled URL (app) / direct URL (migrations) |
 | `JWT_SECRET`, `JWT_REFRESH_SECRET`, `SESSION_SECRET` | yes | signing secrets, 32+ random characters each |
 | `FRONTEND_URL` | yes | the public address, `https://…`, no trailing slash (used in emails and OAuth redirects) |
-| `BREVO_API_KEY`, `EMAIL_FROM` | yes in practice | login-code email |
+| `BREVO_API_KEY`, `EMAIL_FROM` | **yes** | sign-up and login codes, password reset links. `EMAIL_FROM` must be a **sender verified in Brevo**, or Brevo rejects every email. Without these nobody can verify a new account or reset a password (the app says so instead of pretending). Test with `npm --prefix backend run check:email -- you@example.com`. |
 | `GROQ_API_KEY` | optional | AI features; `GROQ_MODEL` overrides the model |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL` | optional | Google sign-in; callback = `<FRONTEND_URL>/api/v1/auth/google/callback` |
 | `PORT` | no | the platform sets it (default 10000) |
 | `TRUST_PROXY` | no | number of proxy hops (default 1; 2 when Vercel proxies to Render) |
 | `ALLOWED_ORIGINS` | split deploy only | comma-separated site origins allowed to call the API |
+| `FRONTEND_URLS` | optional | more websites served by this same backend, comma-separated (see "Two websites, one backend") |
 | `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS` | no | general API limit per IP (default 1000 per 15 min) |
 | `AUDIT_RETENTION_DAYS`, `CLASS_RETENTION_DAYS` | no | see `docs/DATABASE.md` |
 | `DNS_SERVERS` | no | fallback DNS for `mongodb+srv` lookups |
@@ -71,17 +72,17 @@ Put it behind HTTPS (the camera and microphone only work on HTTPS or localhost).
 
 ```bash
 npm run install:all
-npm run build          # builds frontend/dist and generates the Prisma client
+npm run build          # builds frontend-reactjs/dist and generates the Prisma client
 npm run migrate        # prisma migrate deploy
 NODE_ENV=production npm start
 ```
 
 ## Option D: frontend on Vercel, backend on Render (only if you must split)
 
-The browser talks only to the Vercel address; Vercel forwards `/api/*` to Render (`frontend/vercel.json`), so the login cookie stays first-party. Only the live-caption WebSocket goes straight to Render (Vercel cannot proxy WebSockets) and it authenticates with the access token, not a cookie.
+The browser talks only to the Vercel address; Vercel forwards `/api/*` to Render (`frontend-reactjs/vercel.json`), so the login cookie stays first-party. Only the live-caption WebSocket goes straight to Render (Vercel cannot proxy WebSockets) and it authenticates with the access token, not a cookie.
 
 - **Render:** `NODE_ENV=production`, `TRUST_PROXY=2`, `FRONTEND_URL` and `ALLOWED_ORIGINS` = the Vercel address, `GOOGLE_CALLBACK_URL` = `https://<vercel>/api/v1/auth/google/callback`.
-- **Vercel:** root directory `frontend`, build `npm run build`, output `dist`; edit `frontend/vercel.json` to your Render address; set `VITE_SOCKET_URL=https://<render address>`; do **not** set `VITE_API_URL`.
+- **Vercel:** root directory `frontend-reactjs`, build `npm run build`, output `dist`; edit `frontend-reactjs/vercel.json` to your Render address; set `VITE_SOCKET_URL=https://<render address>`; do **not** set `VITE_API_URL`.
 
 This works but is two things to keep in sync. Prefer Option A.
 
@@ -113,3 +114,13 @@ This works but is two things to keep in sync. Prefer Option A.
 ## CI
 
 `.github/workflows/ci.yml` runs on every push: frontend tests (recognition logic, outbox, evaluation, WCAG contrast of the colour tokens) and build, `prisma validate`, backend tests, and a Docker build. `e2e.yml` is a manual workflow that runs the end-to-end suite and the migration tests against a **test** Postgres and MongoDB you provide as repository secrets. Pushing files under `.github/workflows` needs a token with the `workflow` scope.
+
+## Two websites, one backend
+
+One Render backend can serve two separate frontends (for example the React app and a second app), each deployed as its own Vercel project from its own folder.
+
+1. **Vercel, for each frontend:** set the project's *Root Directory* to that frontend's folder and give it its own `vercel.json` that forwards `/api/*` to the Render address, so each site keeps its login cookie on its own address.
+2. **Render:** `FRONTEND_URL` = the main site, `FRONTEND_URLS` = the other site(s), comma-separated, no trailing slash. Add the same addresses to `ALLOWED_ORIGINS`.
+3. **Google sign-in:** set `GOOGLE_CALLBACK_URL` to the main site's callback, and in the Google Cloud console add the callback of **every** site: `https://<site>/api/v1/auth/google/callback`. The backend remembers which site started sign-in and sends the person back to it.
+4. **Emails** (password reset, welcome) link to the site the request came from, as long as it is on the list; otherwise to `FRONTEND_URL`.
+5. With only one site and no `FRONTEND_URLS`, nothing changes.

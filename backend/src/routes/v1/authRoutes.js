@@ -4,6 +4,8 @@
 const { Router } = require('express');
 const { body } = require('express-validator');
 const passport = require('passport');
+const { strongPassword } = require('../../utils/passwordPolicy');
+const { defaultFrontend, frontendFor, googleCallbackFor } = require('../../config/frontends');
 
 const {
   register,
@@ -31,7 +33,7 @@ router.post('/register',
   [
     body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
     body('username').isLength({ min: 3, max: 20 }).trim().withMessage('Username 3-20 chars'),
-    body('password').isLength({ min: 8 }).withMessage('Password min 8 chars'),
+    body('password').custom(strongPassword),
     body('nativeLanguage').optional().isLength({ min: 2, max: 5 }),
   ],
   register
@@ -87,7 +89,7 @@ router.post('/forgot-password',
 );
 
 router.post('/reset-password/:token',
-  [body('password').isLength({ min: 8 }).withMessage('Password min 8 chars')],
+  [body('password').custom(strongPassword)],
   resetPassword
 );
 
@@ -102,12 +104,18 @@ router.get('/google', (req, res, next) => {
     // Handle case where Google redirected back to /google (missing /callback)
     return passport.authenticate('google', {
       session: true,
-      failureRedirect: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/?error=oauth_failed`,
+      callbackURL: googleCallbackFor(req.cookies && req.cookies.oauth_origin),
+      failureRedirect: `${defaultFrontend()}/?error=oauth_failed`,
     })(req, res, next);
   }
 
-  // Normal initiation
+  // Normal initiation. Remember which website the person came from (only if it is on the allowed list) so the
+  // callback can send them back to it: one backend can serve several websites.
+  if (req.query && req.query.origin) {
+    res.cookie('oauth_origin', frontendFor(req.query.origin), { httpOnly: true, maxAge: 10 * 60 * 1000, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' });
+  }
   return passport.authenticate('google', {
+    callbackURL: googleCallbackFor(req.query && req.query.origin),
     scope: ['profile', 'email'],
     prompt: 'select_account',   // forces account picker
     access_type: 'offline',     // gets Google refresh_token
@@ -116,10 +124,11 @@ router.get('/google', (req, res, next) => {
 
 // Step 2: Google redirects back here
 router.get('/google/callback',
-  passport.authenticate('google', {
+  (req, res, next) => passport.authenticate('google', {
     session: true,            // allow Passport to use a short-lived session for the OAuth handshake
-    failureRedirect: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/?error=oauth_failed`,
-  }),
+    callbackURL: googleCallbackFor(req.cookies && req.cookies.oauth_origin),
+    failureRedirect: `${defaultFrontend()}/?error=oauth_failed`,
+  })(req, res, next),
   googleCallback
 );
 

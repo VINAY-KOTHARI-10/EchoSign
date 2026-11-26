@@ -2,6 +2,7 @@
 'use strict';
 const { Router } = require('express');
 const { authenticate, requirePermission } = require('../../middleware/authMiddleware');
+const { invalidateLanguages } = require('../../config/languages');
 const audit = require('../../Services/auditService');
 const { getOnlineCount } = require('../../sockets/socketManager');
 const AuthSession = require('../../models/mongo/AuthSession');
@@ -77,6 +78,13 @@ router.patch('/users/:id/role', async (req, res, next) => {
       select: { id: true, email: true, role: true },
     });
     audit.record({ actor: req.user, action: 'user.role_change', targetType: 'user', targetId: user.id, meta: { email: user.email, from: before.role, to: role }, ip: req.ip });
+    // HTTP requests read the role fresh on every call, but a socket that is already open keeps the role it was opened
+    // with. Update those now, so a demoted admin stops acting as a class host on a connection that is still open.
+    const io = req.app.get('io');
+    if (io) {
+      for (const s of io.of('/').sockets.values()) if (s.user && s.user.id === user.id) s.user.role = role;
+      io.to(`user:${user.id}`).emit('account:role', { role });
+    }
     res.json({ success: true, data: { user } });
   } catch (err) { next(err); }
 });
@@ -250,6 +258,7 @@ router.patch('/languages/:id', async (req, res, next) => {
         ...(active !== undefined && { active: Boolean(active) }),
       },
     });
+    invalidateLanguages();
     res.json({ success: true, data: { language } });
   } catch (err) { next(err); }
 });
@@ -259,6 +268,7 @@ router.delete('/languages/:id', async (req, res, next) => {
   try {
     await prisma.language.delete({ where: { id: req.params.id } });
     audit.record({ actor: req.user, action: 'language.delete', targetType: 'language', targetId: req.params.id, ip: req.ip });
+    invalidateLanguages();
     res.json({ success: true, message: 'Language deleted' });
   } catch (err) { next(err); }
 });

@@ -19,6 +19,7 @@ function validateEnv(env = process.env, log = console) {
   if (isProd) REQUIRED_PROD.forEach((k) => { if (!env[k]) problems.push(k); });
   if (isProd && env.FRONTEND_URL && !/^https:\/\//.test(env.FRONTEND_URL)) warnings.push('FRONTEND_URL should start with https:// in production');
   if (isProd && /localhost|127\.0\.0\.1/.test(env.FRONTEND_URL || '')) warnings.push('FRONTEND_URL points at localhost in production');
+  if (isProd && env.FRONTEND_URLS && env.FRONTEND_URLS.split(',').some((u) => u.trim() && !/^https:\/\//.test(u.trim()))) warnings.push('every FRONTEND_URLS entry should start with https:// in production');
   if (isProd) Object.entries(OPTIONAL).forEach(([k, why]) => { if (!env[k]) warnings.push(`${k} is not set: ${why}`); });
   ['JWT_SECRET', 'JWT_REFRESH_SECRET', 'SESSION_SECRET'].forEach((k) => {
     if (isProd && env[k] && env[k].length < 32) warnings.push(`${k} is short; use at least 32 random characters`);

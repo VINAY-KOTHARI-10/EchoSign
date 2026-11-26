@@ -5,11 +5,16 @@
 
 const request = require('supertest');
 
+// The per-IP limiter is shared by every request in this file; its own behaviour is not what these tests are about.
+jest.mock('../src/middleware/rateLimiter', () => {
+  const pass = (req, res, next) => next();
+  return { rateLimiter: pass, strictAuthLimiter: pass, speechRateLimiter: pass, otpResendLimiter: pass };
+});
 jest.mock('../src/config/mongodb', () => ({ connectMongoDB: jest.fn().mockResolvedValue(true) }));
 jest.mock('../src/config/postgres', () => ({
   connectPostgres: jest.fn().mockResolvedValue(true),
   prisma: {
-    user: { findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn() },
+    user: { findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
     userProfile: { create: jest.fn(), update: jest.fn() },
     $transaction: jest.fn(),
     $queryRaw: jest.fn(),
@@ -24,6 +29,7 @@ jest.mock('../src/Services/emailService', () => ({
   sendPasswordChanged: jest.fn().mockResolvedValue(undefined),
   sendOAuthWelcome: jest.fn().mockResolvedValue(undefined),
   sendVerifyEmail: jest.fn(),
+  isConfigured: jest.fn().mockReturnValue(true),
 }));
 
 const app = require('../src/app');
@@ -39,7 +45,7 @@ const mockNewUser = () => {
   }));
   UserActivity.create.mockResolvedValue({});
 };
-const registerBody = { email: 'test@test.com', username: 'testuser', password: 'password123' };
+const registerBody = { email: 'test@test.com', username: 'testuser', password: 'Tr1cky-Horse9' };
 
 describe('Auth API', () => {
   describe('POST /api/v1/auth/register', () => {
@@ -79,6 +85,33 @@ describe('Auth API', () => {
       const res = await request(app).post('/api/v1/auth/register').send(registerBody);
       expect(res.status).toBe(409);
     });
+
+    it('refuses an address that is already confirmed (409), even with the same details', async () => {
+      prisma.user.findFirst.mockResolvedValue({ id: 'u1', email: 'test@test.com', username: 'testuser', emailVerified: true });
+      const res = await request(app).post('/api/v1/auth/register').send(registerBody);
+      expect(res.status).toBe(409);
+    });
+
+    it('signing up again with an address nobody confirmed takes it over and sends a fresh code', async () => {
+      prisma.user.findFirst.mockReset();
+      prisma.user.findFirst.mockResolvedValueOnce({ id: 'u1', email: 'test@test.com', username: 'testuser', emailVerified: false });
+      prisma.user.update.mockResolvedValue({});
+      EmailService.sendLoginOtp.mockReset().mockResolvedValue(undefined);
+      EmailService.sendWelcome.mockClear();
+      const res = await request(app).post('/api/v1/auth/register').send(registerBody);
+      expect(res.status).toBe(201);
+      expect(res.body.requiresOtp).toBe(true);
+      expect(prisma.user.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'u1' } }));
+      expect(EmailService.sendLoginOtp).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not send the welcome email before the address is confirmed', async () => {
+      mockNewUser();
+      EmailService.sendLoginOtp.mockResolvedValue(undefined);
+      EmailService.sendWelcome.mockClear();
+      await request(app).post('/api/v1/auth/register').send(registerBody);
+      expect(EmailService.sendWelcome).not.toHaveBeenCalled();
+    });
   });
 
   describe('POST /api/v1/auth/login', () => {
@@ -91,6 +124,28 @@ describe('Auth API', () => {
       prisma.user.findUnique.mockResolvedValue(null);
       const res = await request(app).post('/api/v1/auth/login').send({ email: 'noone@test.com', password: 'password' });
       expect(res.status).toBe(401);
+    });
+  });
+
+  describe('POST /api/v1/auth/forgot-password', () => {
+    it('says so (503) when the server has no email service, whether or not the address exists', async () => {
+      EmailService.isConfigured.mockReturnValueOnce(false);
+      const res = await request(app).post('/api/v1/auth/forgot-password').send({ email: 'anyone@test.com' });
+      expect(res.status).toBe(503);
+      expect(res.body.error || res.body.message).toMatch(/not set up|configure/i);
+    });
+
+    it('gives the same reply for a known and an unknown address when email works', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(null);
+      const unknown = await request(app).post('/api/v1/auth/forgot-password').send({ email: 'ghost@test.com' });
+      prisma.user.findUnique.mockResolvedValueOnce({ id: 'u1', email: 'real@test.com', username: 'real' });
+      prisma.user.update.mockResolvedValue({});
+      EmailService.sendPasswordReset.mockResolvedValue(undefined);
+      const known = await request(app).post('/api/v1/auth/forgot-password').send({ email: 'real@test.com' });
+      expect(unknown.status).toBe(200);
+      expect(known.status).toBe(200);
+      expect(known.body.message).toBe(unknown.body.message);
+      expect(EmailService.sendPasswordReset).toHaveBeenCalledTimes(1);
     });
   });
 

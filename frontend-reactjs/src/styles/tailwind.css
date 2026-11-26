@@ -1,0 +1,2 @@
+/* Tailwind utilities only (prefixed tw-, no global reset): see tailwind.config.js */
+@tailwind utilities;

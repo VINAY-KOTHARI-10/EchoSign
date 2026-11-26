@@ -30,6 +30,8 @@ services:
         sync: false
       - key: FRONTEND_URL        # https://<your-service>.onrender.com   (the same address, no trailing slash)
         sync: false
+      - key: FRONTEND_URLS       # optional: more websites using this backend, comma-separated (see DEPLOYMENT.md, "Two websites, one backend")
+        sync: false
       - key: BREVO_API_KEY       # emails the login code; without it nobody can verify an account
         sync: false
       - key: EMAIL_FROM          # a sender verified in Brevo

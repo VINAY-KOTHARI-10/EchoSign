@@ -184,9 +184,9 @@ app.get('/api', (req, res) => {
 });
 
 // ─── Frontend (production) ────────────────────────────────────────────────────
-// The React app is built into frontend/dist and served from this same service, so the browser sees one
+// The React app is built into frontend-reactjs/dist and served from this same service, so the browser sees one
 // origin: no CORS, and the login cookie is first-party. Deep links fall back to index.html.
-const distDir = path.join(__dirname, '../../frontend/dist');
+const distDir = path.join(__dirname, '../../frontend-reactjs/dist');
 if (fs.existsSync(path.join(distDir, 'index.html'))) {
   // Hashed files under /assets never change, so they can be cached for a year. The service worker, manifest and
   // index.html must always be re-checked, or users would keep an old app after a deploy.

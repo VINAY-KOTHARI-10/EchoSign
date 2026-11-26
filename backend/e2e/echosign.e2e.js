@@ -761,3 +761,279 @@ describe('long lectures (real PostgreSQL, more than 20,000 captions)', () => {
     assert.deepEqual(r.json.data.references, []);
   });
 });
+
+// Roles INSIDE a class: host, captioner, student, a teacher who does not host this class, and an admin. The account
+// role says what someone may do in the app; this says what they may do in one class. A real CAPTIONER is assigned and
+// then exercised (the older test only tried the host and a student).
+describe('roles inside a class', () => {
+  let room; let cap; let pupil; let otherTeacher; let stranger; let hostCaption; let pupilCaption; let host; let adm;
+  const path = (suffix = '') => `/classrooms/${room.code}${suffix}`;
+
+  before(async () => {
+    host = await makeUser('rolehost', 'TEACHER');
+    adm = await makeUser('roleadmin', 'ADMIN');
+    cap = await makeUser('cap');
+    pupil = await makeUser('pupil');
+    otherTeacher = await makeUser('teacher2', 'TEACHER');
+    stranger = await makeUser('stranger');
+    const made = await api('POST', '/classrooms', { token: host.token, body: { title: 'Roles in a class', language: 'en' } });
+    assert.equal(made.status, 201);
+    room = made.json.data.classroom;
+    for (const [u, name] of [[cap, 'cap'], [pupil, 'pupil']]) {
+      await prisma.classroomMember.create({ data: { classroomId: room.id, userId: u.id, username: name } });
+    }
+    const posted = async (who, text, clientId) => (await api('POST', path('/captions'), { token: who.token, body: { text, source: 'TEXT', clientId } })).json.data.caption;
+    hostCaption = await posted(host, 'Today we study how forces change motion.', 'rbac-host-0001');
+    pupilCaption = await posted(pupil, 'Is friction a force too?', 'rbac-pupil-001');
+    await posted(host, 'Friction opposes motion between two surfaces.', 'rbac-host-0002');
+    await posted(host, 'Gravity pulls objects toward the ground.', 'rbac-host-0003');
+  });
+
+  it('a plain member can correct only their own caption, and cannot generate notes or see insights', async () => {
+    assert.equal((await api('PATCH', path(`/captions/${hostCaption.id}`), { token: pupil.token, body: { text: 'tampered' } })).status, 403);
+    assert.equal((await api('PATCH', path(`/captions/${pupilCaption.id}`), { token: pupil.token, body: { text: 'Is friction a force too? (fixed)' } })).status, 200);
+    assert.equal((await api('POST', path('/summary'), { token: pupil.token })).status, 403);
+    assert.equal((await api('GET', path('/insights'), { token: pupil.token })).status, 403);
+  });
+
+  it('only the host can give captioner rights, and the host role itself cannot be changed', async () => {
+    const asRole = (token, userId, role) => api('PUT', path(`/members/${userId}/role`), { token, body: { role } });
+    assert.equal((await asRole(pupil.token, cap.id, 'CAPTIONER')).status, 403, 'a student cannot');
+    assert.equal((await asRole(otherTeacher.token, cap.id, 'CAPTIONER')).status, 403, 'a teacher who does not host this class cannot');
+    assert.equal((await asRole(host.token, cap.id, 'HOST')).status, 400, 'HOST is not an assignable role');
+    assert.equal((await asRole(host.token, cap.id, 'ADMIN')).status, 400);
+    assert.equal((await asRole(host.token, host.id, 'STUDENT')).status, 400, 'the host cannot demote themselves');
+    assert.equal((await asRole(host.token, stranger.id, 'CAPTIONER')).status, 404, 'only someone who joined can be made a captioner');
+    const ok = await asRole(host.token, cap.id, 'CAPTIONER');
+    assert.equal(ok.status, 200);
+    assert.equal(ok.json.data.role, 'CAPTIONER');
+  });
+
+  it('a captioner can correct anyone\'s caption, generate notes and see insights', async () => {
+    const fix = await api('PATCH', path(`/captions/${hostCaption.id}`), { token: cap.token, body: { text: 'Today we study how forces change motion (corrected).' } });
+    assert.equal(fix.status, 200);
+    assert.equal(fix.json.data.caption.editedById, cap.id);
+    assert.equal(fix.json.data.caption.originalText, 'Today we study how forces change motion.', 'the original text is kept');
+    assert.equal((await api('POST', path('/summary'), { token: cap.token })).status, 200);
+    assert.equal((await api('GET', path('/insights'), { token: cap.token })).status, 200);
+  });
+
+  it('a captioner cannot change settings, end or reopen the class, or change roles', async () => {
+    assert.equal((await api('PATCH', path(), { token: cap.token, body: { title: 'Hijacked' } })).status, 403);
+    assert.equal((await api('POST', path('/end'), { token: cap.token })).status, 403);
+    assert.equal((await api('POST', path('/reopen'), { token: cap.token })).status, 403);
+    assert.equal((await api('PUT', path(`/members/${pupil.id}/role`), { token: cap.token, body: { role: 'CAPTIONER' } })).status, 403);
+    const still = await api('GET', path(), { token: host.token });
+    assert.equal(still.json.data.classroom.title, 'Roles in a class');
+    assert.equal(still.json.data.classroom.active, true);
+  });
+
+  it('a teacher who does not host this class is only an outsider here', async () => {
+    assert.equal((await api('GET', path('/captions'), { token: otherTeacher.token })).status, 403, 'cannot read private captions without joining');
+    assert.equal((await api('PATCH', path(), { token: otherTeacher.token, body: { title: 'Mine now' } })).status, 403);
+    assert.equal((await api('POST', path('/end'), { token: otherTeacher.token })).status, 403);
+    assert.equal((await api('POST', path('/summary'), { token: otherTeacher.token })).status, 403);
+    assert.equal((await api('GET', path('/insights'), { token: otherTeacher.token })).status, 403);
+  });
+
+  it('taking captioner rights away takes effect at once', async () => {
+    assert.equal((await api('PUT', path(`/members/${cap.id}/role`), { token: host.token, body: { role: 'STUDENT' } })).status, 200);
+    assert.equal((await api('PATCH', path(`/captions/${hostCaption.id}`), { token: cap.token, body: { text: 'again' } })).status, 403);
+    assert.equal((await api('POST', path('/summary'), { token: cap.token })).status, 403);
+    assert.equal((await api('GET', path('/insights'), { token: cap.token })).status, 403);
+  });
+
+  it('an admin can manage another teacher\'s class', async () => {
+    assert.equal((await api('PATCH', path(), { token: adm.token, body: { title: 'Renamed by admin' } })).status, 200);
+    assert.equal((await api('PUT', path(`/members/${cap.id}/role`), { token: adm.token, body: { role: 'CAPTIONER' } })).status, 200);
+    assert.equal((await api('POST', path('/end'), { token: adm.token })).status, 200);
+    assert.equal((await api('POST', path('/reopen'), { token: adm.token })).status, 200);
+  });
+
+  it('class role changes are written to the audit log', async () => {
+    const audit = await api('GET', '/admin/audit?action=class.member_role', { token: adm.token });
+    assert.equal(audit.status, 200);
+    assert.ok(audit.json.data.rows.some((r) => r.targetId === cap.id && r.meta.role === 'CAPTIONER' && r.meta.code === room.code));
+  });
+});
+
+// Things the app must never pretend. No AI key is set in the e2e environment, so the fallbacks are real here.
+describe('honest fallbacks, scheduled classes, languages, role changes', () => {
+  const PronunciationRecord = require('../src/models/mongo/PronunciationRecord');
+  let adm; let teach;
+  before(async () => { adm = await makeUser('admin3', 'ADMIN'); teach = await makeUser('teach3', 'TEACHER'); });
+
+  it('with no AI, pronunciation feedback is a labelled word match and is never stored', async () => {
+    const person = await makeUser('speaker');
+    const r = await api('POST', '/speech/analyze', { token: person.token, body: { targetText: 'The weather is nice today', transcribedText: 'the weather is nice', language: 'en' } });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.data.ai, false);
+    assert.equal(r.json.data.provider, 'basic');
+    assert.equal(r.json.data.fluencyScore, null);
+    assert.equal(r.json.data.recordId, null);
+    assert.equal(r.json.data.overallAccuracy, 80);
+    assert.equal(await PronunciationRecord.countDocuments({ userId: person.id }), 0, 'nothing was recorded as an assessment');
+  });
+
+  it('with no AI, the AI Partner says it is unavailable instead of inventing a reply and a score', async () => {
+    const person = await makeUser('talker');
+    const r = await api('POST', '/conversation/chat', { token: person.token, body: { userMessage: 'Bonjour', language: 'French', conversationHistory: [], scenario: 'casual', difficulty: 'easy' } });
+    assert.equal(r.status, 503);
+    assert.equal(r.json.code, 'AI_UNAVAILABLE');
+    assert.equal(r.json.data, undefined, 'no demo reply and no random score');
+  });
+
+  it('a scheduled class cannot be joined early by students; the host can enter, and it opens at the start time', async () => {
+    const host = await makeUser('schedhost', 'TEACHER');
+    const early = await makeUser('earlybird');
+    const soon = new Date(Date.now() + 3 * 3600 * 1000).toISOString();
+    const made = await api('POST', '/classrooms', { token: host.token, body: { title: 'Starts later', language: 'en', scheduledAt: soon } });
+    assert.equal(made.status, 201);
+    const room = made.json.data.classroom;
+
+    const studentSocket = await socketFor(early.token);
+    const refused = await ask(studentSocket, 'class:join', { code: room.code });
+    assert.equal(refused.ok, false);
+    assert.equal(refused.code, 'NOT_STARTED');
+    assert.ok(Date.parse(refused.startsAt) > Date.now());
+    assert.equal(await prisma.classroomMember.count({ where: { classroomId: room.id, userId: early.id } }), 0, 'no membership was created');
+
+    const hostSocket = await socketFor(host.token);
+    assert.equal((await ask(hostSocket, 'class:join', { code: room.code })).ok, true, 'the host may enter early');
+
+    await prisma.classroom.update({ where: { id: room.id }, data: { scheduledAt: new Date(Date.now() - 60000) } });
+    assert.equal((await ask(studentSocket, 'class:join', { code: room.code })).ok, true, 'once the time has come, students can join');
+  });
+
+  it('a language added on the admin page appears for everyone, can be used, and disappears when switched off', async () => {
+    const person = await makeUser('polyglot');
+    const before = await api('GET', '/languages', { token: person.token });
+    assert.ok(!before.json.data.languages.some((l) => l.code === 'tr'));
+    const added = await api('POST', '/languages', { token: adm.token, body: { code: 'tr', name: 'Turkish', flag: 'TR' } });
+    assert.equal(added.status, 201);
+    const bad = await api('POST', '/languages', { token: adm.token, body: { code: 'x', name: 'Bad' } });
+    assert.equal(bad.status, 400);
+    assert.equal((await api('POST', '/languages', { token: person.token, body: { code: 'xx', name: 'Nope' } })).status, 403, 'only admins can add');
+
+    const list = await api('GET', '/languages', { token: person.token });
+    assert.ok(list.json.data.languages.some((l) => l.code === 'tr' && l.name === 'Turkish'), 'it shows in the public list');
+    assert.ok(list.json.data.languages.some((l) => l.code === 'en'), 'the built-in languages are still there');
+    assert.equal((await api('PATCH', '/users/profile', { token: person.token, body: { nativeLanguage: 'tr', targetLanguages: ['tr', 'fr'] } })).status, 200, 'the profile accepts it');
+    const lroom = (await api('POST', '/classrooms', { token: teach.token, body: { title: 'Languages', language: 'en' } })).json.data.classroom;
+    await prisma.classroomMember.create({ data: { classroomId: lroom.id, userId: person.id, username: 'polyglot' } });
+    const tr = await api('POST', `/classrooms/${lroom.code}/translate`, { token: person.token, body: { target: 'Turkish', texts: ['Hello'] } });
+    assert.notEqual(tr.status, 400, 'translation accepts it (503 here only because no AI is configured)');
+
+    await api('PATCH', `/admin/languages/${added.json.data.language.id}`, { token: adm.token, body: { active: false } });
+    const after = await api('GET', '/languages', { token: person.token });
+    assert.ok(!after.json.data.languages.some((l) => l.code === 'tr'), 'switched off, it is gone everywhere');
+    assert.equal((await api('PATCH', '/users/profile', { token: person.token, body: { nativeLanguage: 'tr' } })).status, 400);
+    await api('DELETE', `/admin/languages/${added.json.data.language.id}`, { token: adm.token });
+  });
+
+  it('a demoted admin stops acting as a host on a connection that is already open', async () => {
+    const boss = await makeUser('boss', 'ADMIN');
+    const owner = await makeUser('owner', 'TEACHER');
+    const made = await api('POST', '/classrooms', { token: owner.token, body: { title: 'Admin demotion', language: 'en' } });
+    const room = made.json.data.classroom;
+    const bossSocket = await socketFor(boss.token);
+    const joined = await ask(bossSocket, 'class:join', { code: room.code });
+    assert.equal(joined.ok, true);
+    assert.equal(joined.role, 'HOST', 'an admin acts as host');
+    const changed = await api('PATCH', `/admin/users/${boss.id}/role`, { token: adm.token, body: { role: 'USER' } });
+    assert.equal(changed.status, 200);
+    const again = await ask(bossSocket, 'class:join', { code: room.code });
+    assert.equal(again.ok, true);
+    assert.equal(again.role, 'STUDENT', 'the open connection no longer has host rights');
+    assert.equal(again.canModerate, false);
+  });
+});
+
+// Sign Meet: people in the same meeting can reach each other; nobody else can.
+describe('sign meet signalling', () => {
+  const people = {};
+
+  before(async () => {
+    for (const name of ['mA', 'mB', 'mC', 'mD', 'mE', 'mOut']) people[name] = { user: await makeUser(name) };
+    for (const p of Object.values(people)) p.socket = await socketFor(p.user.token);
+  });
+
+  it('rejects a meeting code that is not six letters and numbers', async () => {
+    const r = await ask(people.mA.socket, 'meet:join', { code: 'abc' });
+    assert.equal(r.ok, false);
+    assert.equal(r.code, 'BAD_CODE');
+  });
+
+  it('introduces people to each other, and only people in the same meeting see each other\'s messages', async () => {
+    const room = 'M3ET4Z';
+    const first = await ask(people.mA.socket, 'meet:join', { code: room });
+    assert.equal(first.ok, true);
+    assert.deepEqual(first.peers, []);
+    assert.deepEqual(first.iceServers, [], 'no outside servers by default, so a hotspot meeting stays local');
+
+    const joinedNote = waitFor(people.mA.socket, 'meet:peer-joined');
+    const second = await ask(people.mB.socket, 'meet:join', { code: room });
+    assert.equal(second.ok, true);
+    assert.equal(second.peers.length, 1);
+    assert.equal(second.peers[0].username, people.mA.user.username);
+    assert.equal((await joinedNote).peer.userId, people.mB.user.id);
+
+    // a connection message goes to the one person it is addressed to
+    const got = waitFor(people.mB.socket, 'meet:signal');
+    people.mA.socket.emit('meet:signal', { to: people.mB.socket.id, data: { type: 'offer', sdp: 'v=0 test' } });
+    const sig = await got;
+    assert.equal(sig.from, people.mA.socket.id);
+    assert.equal(sig.data.type, 'offer');
+
+    // someone who is not in this meeting hears nothing, even if addressed directly
+    let leaked = false;
+    people.mOut.socket.once('meet:signal', () => { leaked = true; });
+    people.mA.socket.emit('meet:signal', { to: people.mOut.socket.id, data: { type: 'offer', sdp: 'secret' } });
+    await new Promise((r) => setTimeout(r, 800));
+    assert.equal(leaked, false, 'a message to someone outside the meeting is dropped');
+  });
+
+  it('relays subtitles to the others, trims and labels them, and ignores empty or oversized junk', async () => {
+    const room = 'M3ET4Z';
+    const heard = waitFor(people.mA.socket, 'meet:subtitle');
+    people.mB.socket.emit('meet:subtitle', { text: `  Hello   there ${'x'.repeat(400)}`, kind: 'phrase' });
+    const sub = await heard;
+    assert.equal(sub.username, people.mB.user.username);
+    assert.equal(sub.kind, 'phrase');
+    assert.ok(sub.text.length <= 300);
+    assert.match(sub.text, /^Hello there /);
+
+    let extra = 0;
+    people.mA.socket.on('meet:subtitle', () => { extra += 1; });
+    people.mB.socket.emit('meet:subtitle', { text: '   ', kind: 'speech' });
+    people.mB.socket.emit('meet:subtitle', 'not an object');
+    people.mOut.socket.emit('meet:subtitle', { text: 'I am not in the meeting' });
+    await new Promise((r) => setTimeout(r, 800));
+    assert.equal(extra, 0);
+  });
+
+  it('holds four people, refuses a fifth, and tells the others when someone leaves', async () => {
+    const room = 'M3ET4Z';
+    assert.equal((await ask(people.mC.socket, 'meet:join', { code: room })).ok, true);
+    assert.equal((await ask(people.mD.socket, 'meet:join', { code: room })).ok, true);
+    const full = await ask(people.mE.socket, 'meet:join', { code: room });
+    assert.equal(full.ok, false);
+    assert.equal(full.code, 'ROOM_FULL');
+
+    const goneNote = waitFor(people.mA.socket, 'meet:peer-left');
+    people.mD.socket.emit('meet:leave');
+    assert.equal((await goneNote).socketId, people.mD.socket.id);
+    assert.equal((await ask(people.mE.socket, 'meet:join', { code: room })).ok, true, 'the freed seat can be taken');
+  });
+
+  it('a person who closes their browser is removed from the meeting', async () => {
+    const room = 'Q7WXKL';
+    const watcher = people.mOut;
+    assert.equal((await ask(watcher.socket, 'meet:join', { code: room })).ok, true);
+    const leaver = await socketFor(people.mA.user.token);
+    assert.equal((await ask(leaver, 'meet:join', { code: room })).ok, true);
+    const goneNote = waitFor(watcher.socket, 'meet:peer-left');
+    leaver.close();
+    assert.ok((await goneNote).socketId);
+  });
+});
