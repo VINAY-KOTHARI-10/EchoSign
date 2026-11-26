@@ -1,11 +1,12 @@
 'use client';
 
-// Light / dark switch. The choice is kept in this browser and applied as data-theme on <html>, like the React app.
+// Light / dark switch for the public pages. The choice is kept in this browser as part of the saved EchoSign preferences
+// ("lw_ui_prefs", the same record the signed-in screens use) and applied as data-theme on <html>.
 // (An inline script in the layout applies it before the first paint, so there is no flash of the wrong theme.)
 import { useEffect, useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
 
-const KEY = 'lw_theme';
+const KEY = 'lw_ui_prefs';
 
 export default function ThemeToggle({ className = '' }) {
   const [theme, setTheme] = useState('light');
@@ -17,7 +18,10 @@ export default function ThemeToggle({ className = '' }) {
     setTheme(next);
     document.documentElement.setAttribute('data-theme', next);
     document.documentElement.style.colorScheme = next;
-    try { localStorage.setItem(KEY, next); } catch { /* storage unavailable */ }
+    try {
+      const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
+      localStorage.setItem(KEY, JSON.stringify({ ...saved, theme: next }));
+    } catch { /* storage unavailable */ }
   };
 
   const dark = theme === 'dark';

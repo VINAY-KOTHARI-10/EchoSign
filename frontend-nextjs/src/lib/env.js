@@ -3,6 +3,7 @@
 // Variables that start with NEXT_PUBLIC_ are the only ones that are intentionally visible in the browser.
 import 'server-only';
 import { z } from 'zod';
+import { siteUrl } from '@/lib/site-url';
 
 const schema = z.object({
   BACKEND_URL: z.string().url().default('http://localhost:5000'),
@@ -12,7 +13,7 @@ const schema = z.object({
 
 const parsed = schema.safeParse({
   BACKEND_URL: (process.env.BACKEND_URL || '').replace(/\/+$/, '') || undefined,
-  NEXT_PUBLIC_SITE_URL: (process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/+$/, '') || undefined,
+  NEXT_PUBLIC_SITE_URL: siteUrl(),
   REVALIDATE_SECRET: process.env.REVALIDATE_SECRET || undefined,
 });
 

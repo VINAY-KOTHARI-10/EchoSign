@@ -14,7 +14,7 @@ const safeLocale = (value) => (hasLocale(value) ? value : 'en');
 
 function refresh(locale, id) {
   revalidatePath(`/${locale}/notes`);
-  revalidatePath(`/${locale}/dashboard`);
+  revalidatePath(`/${locale}/overview`);
   if (id) revalidatePath(`/${locale}/notes/${id}`);
 }
 

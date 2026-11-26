@@ -54,7 +54,6 @@ export default async function RootLayout({ children, params }) {
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body>
-        <a className="skip-link" href="#content">Skip to main content</a>
         {children}
         <WebVitals />
         <Analytics />

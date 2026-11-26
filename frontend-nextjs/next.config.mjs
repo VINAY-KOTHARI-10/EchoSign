@@ -19,6 +19,8 @@ const nextConfig = {
   // Enables forbidden() / unauthorized() and the forbidden.js / unauthorized.js pages (role-based access control).
   experimental: { authInterrupts: true },
   images: { formats: ['image/avif', 'image/webp'] }, // Image optimisation
+  // The copied EchoSign React pages import their router from 'react-router-dom'; this maps that name to an adapter built on Next.js routing.
+  turbopack: { resolveAlias: { 'react-router-dom': './src/react-app/shims/react-router-dom.js' } },
   async rewrites() {
     // The browser talks to this site only. Calls to /api/v1/* are forwarded to the EchoSign backend on Render, so the
     // login cookies stay first-party and Google sign-in can come back to this site.

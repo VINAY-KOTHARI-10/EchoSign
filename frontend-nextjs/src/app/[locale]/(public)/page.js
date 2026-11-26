@@ -1,14 +1,14 @@
 // The home page. Fully static (SSG): built once per language at build time, then served from the CDN.
-// The layout and class names are the same as the EchoSign React landing page, so the two sites look alike.
-import Image from 'next/image';
+// This is a copy of the EchoSign React landing page: the same sections, class names and (in English) words.
 import Link from 'next/link';
-import { ArrowRight, BookOpen, CheckCircle2, Hand, Languages, Mic, NotebookPen } from 'lucide-react';
+import { ArrowRight, BookOpen, Bot, Captions, CheckCircle2, Globe, Hand, Keyboard, Languages, LibraryBig, Mic, MonitorSmartphone, ShieldCheck, Sparkles, Users, Video } from 'lucide-react';
 import Waveform from '@/components/Waveform';
-import { getDictionary } from '@/i18n/get-dictionary';
+import { getLandingCopy } from '@/features/landing/copy';
 
-// This line runs when the site is BUILT, not on every visit: that is what "static" means.
-const BUILT_AT = new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
-const POINT_ICONS = [Hand, BookOpen, NotebookPen, Languages];
+const POINT_ICONS = [Captions, Hand, Globe, Users];
+const FEATURE_ICONS = [Mic, Hand, Globe, Keyboard, Sparkles, Video, MonitorSmartphone];
+const FEATURE_LAYOUT = [{ size: 'wide', art: 'wave' }, { size: 'tall', art: 'sign' }, {}, {}, {}, { size: 'wide' }, {}];
+const MODULE_ICONS = [Hand, BookOpen, Bot, LibraryBig, Users, ShieldCheck];
 
 function CaptionDemo({ note }) {
   return (
@@ -47,79 +47,96 @@ function CaptionDemo({ note }) {
 
 export default async function HomePage({ params }) {
   const { locale } = await params;
-  const d = await getDictionary(locale);
-  const features = [
-    { icon: Hand, title: d.home.f1t, body: d.home.f1b, href: `/${locale}/signs` },
-    { icon: BookOpen, title: d.home.f2t, body: d.home.f2b, href: `/${locale}/library` },
-    { icon: NotebookPen, title: d.home.f3t, body: d.home.f3b, href: `/${locale}/notes` },
-  ];
+  const c = getLandingCopy(locale);
+  const register = `/${locale}/register`;
 
   return (
     <>
       <section className="hero">
         <div className="container hero-grid">
           <div>
-            <span className="badge badge-info"><CheckCircle2 size={13} aria-hidden="true" /> {d.home.badge}</span>
-            <h1>{d.home.title} <span className="grad-text">{d.home.titleAccent}</span></h1>
-            <p className="lead">{d.home.lead}</p>
+            <span className="badge badge-info"><CheckCircle2 size={13} aria-hidden="true" /> {c.hero.badge}</span>
+            <h1>{c.hero.title} <span className="grad-text">{c.hero.accent}</span> {c.hero.title2}</h1>
+            <p className="lead">{c.hero.lead}</p>
             <div className="hero-actions">
-              <Link href={`/${locale}/dashboard`} className="btn btn-primary btn-lg btn-glow">{d.home.cta} <ArrowRight size={18} aria-hidden="true" /></Link>
-              <Link href={`/${locale}/signs`} className="btn btn-outline btn-lg">{d.home.ctaSecondary}</Link>
+              <Link href={register} className="btn btn-primary btn-lg btn-glow">{c.hero.cta} <ArrowRight size={18} aria-hidden="true" /></Link>
+              <a href="#how" className="btn btn-outline btn-lg">{c.hero.secondary}</a>
             </div>
             <ul className="hero-points" aria-label="Highlights">
-              {d.home.points.map((label, i) => { const Icon = POINT_ICONS[i]; return <li key={label}><Icon size={18} aria-hidden="true" />{label}</li>; })}
+              {c.hero.points.map((label, i) => { const Icon = POINT_ICONS[i]; return <li key={label}><Icon size={18} aria-hidden="true" />{label}</li>; })}
             </ul>
           </div>
-          <CaptionDemo note={d.home.sample} />
+          <CaptionDemo note={c.demo.note} />
+        </div>
+      </section>
+
+      <section className="stats-band" aria-label="EchoSign at a glance">
+        <div className="container stats-grid">
+          {c.stats.map(([n, l]) => <div key={l}><b>{n}</b><span>{l}</span></div>)}
         </div>
       </section>
 
       <section className="section" id="features" aria-labelledby="features-h">
         <div className="container">
-          <div className="eyebrow">{d.home.eyebrow}</div>
-          <h2 id="features-h">{d.home.featuresTitle}</h2>
+          <div className="eyebrow">{c.features.eyebrow}</div>
+          <h2 id="features-h">{c.features.title}</h2>
           <div className="bento">
-            {features.map(({ icon: Icon, title, body, href }) => (
-              <article key={title} className="card feature">
-                <div className="icon-wrap" aria-hidden="true"><Icon size={22} /></div>
-                <h3>{title}</h3>
-                <p className="muted">{body}</p>
-                <Link href={href} className="link">→</Link>
-              </article>
-            ))}
+            {c.features.items.map(([title, body], i) => {
+              const Icon = FEATURE_ICONS[i];
+              const { size, art } = FEATURE_LAYOUT[i];
+              return (
+                <article key={title} className={`card feature bento-${size || 'sm'}`}>
+                  <div className="icon-wrap" aria-hidden="true"><Icon size={22} /></div>
+                  <h3>{title}</h3>
+                  <p className="muted">{body}</p>
+                  {art === 'wave' && <Waveform bars={24} className="big" />}
+                  {art === 'sign' && <div className="sign-art" aria-hidden="true">{['A', 'B', 'C', 'F'].map((ch) => <span key={ch}>{ch}</span>)}</div>}
+                </article>
+              );
+            })}
           </div>
+          <p className="note"><b>{c.features.note[0]}</b> {c.features.note[1]}</p>
         </div>
       </section>
 
       <section className="section soft" id="how" aria-labelledby="how-h">
         <div className="container">
-          <div className="eyebrow">{d.home.stepsEyebrow}</div>
-          <h2 id="how-h">{d.home.stepsTitle}</h2>
+          <div className="eyebrow">{c.how.eyebrow}</div>
+          <h2 id="how-h">{c.how.title}</h2>
           <ol className="steps">
-            {d.home.steps.map(([t, b], i) => (
+            {c.how.steps.map(([t, b], i) => (
               <li key={t} className="card"><span className="step-n" aria-hidden="true">{i + 1}</span><h3>{t}</h3><p className="muted">{b}</p></li>
             ))}
           </ol>
         </div>
       </section>
 
-      <section className="section" aria-labelledby="preview-h">
-        <div className="container a11y-grid">
-          <div>
-            <div className="eyebrow">{d.home.f1t}</div>
-            <h2 id="preview-h">{d.home.ctaTitle}</h2>
-            <p className="muted" style={{ marginTop: 10 }}>{d.home.ctaBody}</p>
-            {/* next/image: resized, converted to AVIF/WebP and lazy-loaded automatically. */}
-            <Image src="/hero.png" alt="" width={1200} height={800} sizes="(min-width: 900px) 520px, 100vw" style={{ width: '100%', height: 'auto', borderRadius: 24, marginTop: 20 }} />
+      <section className="section" id="platform" aria-labelledby="platform-h">
+        <div className="container">
+          <div className="eyebrow">{c.platform.eyebrow}</div>
+          <h2 id="platform-h">{c.platform.title}</h2>
+          <p className="muted platform-lead">{c.platform.lead}</p>
+          <div className="platform-grid">
+            {c.platform.modules.map(([title, body], i) => {
+              const Icon = MODULE_ICONS[i];
+              return (
+                <article key={title} className="card module">
+                  <div className="icon-wrap" aria-hidden="true"><Icon size={20} /></div>
+                  <h3>{title}</h3>
+                  <p className="muted">{body}</p>
+                </article>
+              );
+            })}
           </div>
-          <div className="cta-band">
-            <h2>{d.home.ctaTitle}</h2>
-            <p>{d.home.ctaBody}</p>
-            <Link href={`/${locale}/register`} className="btn btn-lg">{d.nav.register}</Link>
+          <div className="cta-band cta-wide">
+            <div>
+              <h2>{c.platform.cta[0]}</h2>
+              <p>{c.platform.cta[1]}</p>
+            </div>
+            <Link href={register} className="btn btn-lg">{c.hero.cta} <ArrowRight size={18} aria-hidden="true" /></Link>
           </div>
         </div>
       </section>
-      <p className="container muted" style={{ fontSize: 13, paddingBottom: 24 }}>{d.home.built}: {BUILT_AT}</p>
     </>
   );
 }

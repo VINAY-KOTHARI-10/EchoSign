@@ -18,13 +18,15 @@ Pages that do not need the database or the backend (home, sign dictionary, rende
 
 ## Environment variables
 
-| Name | What it is |
-|---|---|
-| `BACKEND_URL` | The EchoSign backend (Render), no trailing slash. Server-only |
-| `NEXT_PUBLIC_SITE_URL` | This site's public address (sitemap, share previews) |
-| `DATABASE_URL` | Pooled address of the new Neon project |
-| `DIRECT_URL` | Direct address of the same project, used by migrations |
-| `REVALIDATE_SECRET` | Secret for `POST /api/revalidate` |
+On Vercel only two are needed.
+
+| Name | Needed? | What it is |
+|---|---|---|
+| `BACKEND_URL` | yes | The EchoSign backend (Render), no trailing slash. Server-only |
+| `DATABASE_URL` | yes | Pooled address of the new Neon project |
+| `DIRECT_URL` | migrations only | Direct address of the same project. Used from your computer by `prisma migrate deploy`; not needed on Vercel |
+| `NEXT_PUBLIC_SITE_URL` | optional | This site's public address. Found automatically on Vercel; set only for a custom domain |
+| `REVALIDATE_SECRET` | optional | Secret for `POST /api/revalidate`. Without it that address is switched off |
 
 ## How it fits together
 
@@ -34,4 +36,4 @@ Pages that do not need the database or the backend (home, sign dictionary, rende
 
 ## Deploying
 
-See "Two websites, one backend" in [`../DEPLOYMENT.md`](../DEPLOYMENT.md): create a second Vercel project from this repository with *Root Directory* `frontend-nextjs`, set the environment variables above, and list this site's address in the backend's `FRONTEND_URLS`.
+See "Two websites, one backend" in [`../DEPLOYMENT.md`](../DEPLOYMENT.md): create a second Vercel project from this repository with *Root Directory* `frontend-nextjs`, set the two required variables above, and list this site's address in the backend's `FRONTEND_URLS`.

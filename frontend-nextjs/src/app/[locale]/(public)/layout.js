@@ -8,7 +8,7 @@ export default async function PublicLayout({ children, params }) {
   const dict = await getDictionary(locale);
   return (
     <>
-      <SiteHeader locale={locale} dict={dict} />
+      <SiteHeader locale={locale} />
       <main id="content">{children}</main>
       <SiteFooter locale={locale} dict={dict} />
     </>

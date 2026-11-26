@@ -13,6 +13,6 @@ export default async function LoginPage({ params, searchParams }) {
   const { locale } = await params;
   const { next } = await searchParams; // the page the person wanted before being asked to sign in
   const d = await getDictionary(locale);
-  if (await getSession()) redirect(`/${locale}/dashboard`); // already signed in
+  if (await getSession()) redirect(`/${locale}/classroom`); // already signed in
   return <AuthForm mode="login" locale={locale} next={typeof next === 'string' ? next : ''} dict={d} />;
 }

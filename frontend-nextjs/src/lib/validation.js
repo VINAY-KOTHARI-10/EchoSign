@@ -1,6 +1,14 @@
 // Input validation with Zod (INT257: Form Validation, Data Validation).
 // The same schemas are used by the Server Actions (forms) and the Route Handlers (REST API), so a rule is written once.
 import { z } from 'zod';
+import { passwordChecks } from '@/lib/password';
+
+const PASSWORD_MESSAGES = {
+  len: 'Use at least 8 characters.',
+  mix: 'Include at least one letter and one number.',
+  common: 'That password is too common. Choose a less guessable one.',
+  email: 'Do not use your email name in the password.',
+};
 
 const email = z.string().trim().min(1, 'Enter your email address.').email('Enter a valid email address.');
 
@@ -12,10 +20,21 @@ export const loginSchema = z.object({
 export const registerSchema = z.object({
   email,
   username: z.string().trim().min(3, 'Username must be at least 3 characters.').max(20, 'Username can be at most 20 characters.'),
-  password: z.string()
-    .min(8, 'Use at least 8 characters.')
-    .regex(/[A-Za-z]/, 'Include at least one letter.')
-    .regex(/\d/, 'Include at least one number.'),
+  password: z.string(),
+  confirm: z.string().default(''),
+}).superRefine((form, ctx) => {
+  const failed = passwordChecks(form.password, form.email).find((c) => !c.ok);
+  if (failed) ctx.addIssue({ code: 'custom', path: ['password'], message: PASSWORD_MESSAGES[failed.id] });
+  if (!form.confirm) ctx.addIssue({ code: 'custom', path: ['confirm'], message: 'Repeat the password to confirm it.' });
+  else if (form.confirm !== form.password) ctx.addIssue({ code: 'custom', path: ['confirm'], message: 'The two passwords do not match.' });
+});
+
+export const forgotSchema = z.object({ email });
+
+export const resetSchema = z.object({ password: z.string(), confirm: z.string() }).superRefine((form, ctx) => {
+  const failed = passwordChecks(form.password).find((c) => !c.ok);
+  if (failed) ctx.addIssue({ code: 'custom', path: ['password'], message: PASSWORD_MESSAGES[failed.id] });
+  if (form.confirm !== form.password) ctx.addIssue({ code: 'custom', path: ['confirm'], message: 'The two passwords do not match.' });
 });
 
 export const otpSchema = z.object({

@@ -13,6 +13,6 @@ export default async function RegisterPage({ params, searchParams }) {
   const { locale } = await params;
   const { next } = await searchParams;
   const d = await getDictionary(locale);
-  if (await getSession()) redirect(`/${locale}/dashboard`);
+  if (await getSession()) redirect(`/${locale}/classroom`);
   return <AuthForm mode="register" locale={locale} next={typeof next === 'string' ? next : ''} dict={d} />;
 }
