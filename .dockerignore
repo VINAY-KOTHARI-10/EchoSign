@@ -13,4 +13,4 @@ collect-code.js
 backend/e2e
 backend/tests
 frontend-reactjs/tests
-frontend-reactjs/scripts
+frontend-nextjs
