@@ -8,7 +8,7 @@ const request = require('supertest');
 // The per-IP limiter is shared by every request in this file; its own behaviour is not what these tests are about.
 jest.mock('../src/middleware/rateLimiter', () => {
   const pass = (req, res, next) => next();
-  return { rateLimiter: pass, strictAuthLimiter: pass, speechRateLimiter: pass, otpResendLimiter: pass };
+  return { rateLimiter: pass, strictAuthLimiter: pass, speechRateLimiter: pass, otpResendLimiter: pass, chatUploadRateLimiter: pass };
 });
 jest.mock('../src/config/mongodb', () => ({ connectMongoDB: jest.fn().mockResolvedValue(true) }));
 jest.mock('../src/config/postgres', () => ({

@@ -27,6 +27,9 @@ const speechLimiter = new RateLimiterMemory({
   duration: 60,
 });
 
+// Chat file uploads: each one is stored in the database, so keep them to a few a minute per person
+const chatUploadLimiter = new RateLimiterMemory({ keyPrefix: 'chat_upload', points: 8, duration: 60 });
+
 // OTP resend limiter — max 3 resend requests per 5 minutes per IP
 // (additional per-user resend logic is enforced in the controller)
 const otpResendLimiterStore = new RateLimiterMemory({
@@ -61,5 +64,6 @@ const rateLimiter       = createRateLimiter(generalLimiter,       'general');
 const strictAuthLimiter = createRateLimiter(authLimiter,          'auth');
 const speechRateLimiter = createRateLimiter(speechLimiter,        'speech');
 const otpResendLimiter  = createRateLimiter(otpResendLimiterStore, 'otp_resend');
+const chatUploadRateLimiter = createRateLimiter(chatUploadLimiter, 'chat_upload');
 
-module.exports = { rateLimiter, strictAuthLimiter, speechRateLimiter, otpResendLimiter };
+module.exports = { rateLimiter, strictAuthLimiter, speechRateLimiter, otpResendLimiter, chatUploadRateLimiter };

@@ -4,6 +4,8 @@ import * as api from '../../../api';
 import { langBcp, langName } from '../../../lib';
 import { useLanguages } from '../../../lib/languages';
 import useSpeech, { canSpeak, speak, stopSpeaking } from '../../../hooks/useSpeech';
+import useVoiceCapture, { blobToBase64 } from '../../../hooks/useVoiceCapture.js';
+import { describeLoudness, describePace, describePitch } from '../../../lib/voiceMetrics.js';
 import { useToast } from '../../../context/ToastContext';
 import { useAuth } from '../../../context/AuthContext';
 import { PageHeader, StatusBadge } from '../../../components/ui';
@@ -18,6 +20,30 @@ const SCENARIOS = [
 ];
 const LEVELS = [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']];
 const hhmm = (d) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+// What the voice analysis found for one spoken message: measured speed, pauses, pitch, clarity, and a couple of tips.
+function VoiceNote({ voice }) {
+  if (voice.status === 'loading') return <p className="msg-voice muted" role="status">Analysing your voice…</p>;
+  if (voice.status === 'error') return <p className="msg-voice muted">Voice feedback unavailable: {voice.message}</p>;
+  const d = voice.data; const t = d?.voice?.timing;
+  const pitch = describePitch(d?.voice?.pitch?.variationSemitones);
+  const loud = describeLoudness(d?.voice?.loudness?.variationDb);
+  const chips = [
+    t && t.wordsPerMinute !== null && `Speed: ${t.wordsPerMinute} words/min (${describePace(t.pace)?.toLowerCase()})`,
+    t && `Pauses: ${t.pauseCount}${t.longPauseCount ? `, longest ${t.longestPause}s` : ''}`,
+    typeof d?.clarityScore === 'number' && `Clarity: ${d.clarityScore}%`,
+    pitch && `Pitch: ${pitch.toLowerCase()}`,
+    loud && `Emphasis: ${loud.toLowerCase()}`,
+  ].filter(Boolean);
+  return (
+    <div className="msg-voice">
+      {d?.ai === false && <p className="muted">The voice analysis was unavailable, so only your words were used.</p>}
+      {chips.length > 0 && <ul className="voice-chips plain-grid">{chips.map((c) => <li key={c} className="chip">{c}</li>)}</ul>}
+      {d?.suggestions?.length > 0 && <ul className="voice-tips">{d.suggestions.slice(0, 2).map((x, i) => <li key={i}>{x}</li>)}</ul>}
+      {voice.url && <audio controls preload="metadata" src={voice.url} aria-label="Play your recording" />}
+    </div>
+  );
+}
 
 export default function Conversation() {
   const langs = useLanguages();
@@ -34,6 +60,9 @@ export default function Conversation() {
   const [scores, setScores] = useState([]);
   const [speakingId, setSpeakingId] = useState(null); // index of the message being read aloud
   const endRef = useRef(null);
+  const capture = useVoiceCapture();
+  const pendingVoice = useRef(false); // the next sent message was spoken, so its recording is analysed
+  const nextId = useRef(1);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [messages, busy]);
   useEffect(() => () => stopSpeaking(), []);
@@ -43,11 +72,39 @@ export default function Conversation() {
     speak(text, langBcp(lang), { onStart: () => setSpeakingId(idx), onEnd: () => setSpeakingId((cur) => (cur === idx ? null : cur)) });
   };
 
+  // Listens to the recording of a spoken message and attaches the result to that message.
+  const analyseVoiceFor = async (id, spoken) => {
+    const recorded = await capture.finish();
+    if (!recorded) return;
+    const patch = (voice) => setMessages((m) => m.map((x) => (x.id === id ? { ...x, voice: { url: recorded.url, ...voice } } : x)));
+    patch({ status: 'loading' });
+    try {
+      const audio = await blobToBase64(recorded.blob);
+      const res = await api.speech.analyzeVoice({ audio, mime: recorded.mime.split(';')[0], language: lang, transcribedText: spoken, scenario: scenario.prompt, metrics: recorded.metrics });
+      patch({ status: 'done', data: res.data });
+    } catch (err) { patch({ status: 'error', message: err.message }); }
+  };
+
+  // The partner speaks first, with a different opening each time.
+  const startConversation = async () => {
+    setStarted(true); setBusy(true); setError('');
+    try {
+      const res = await api.conversation.chat({ opening: true, language: langName(lang), conversationHistory: [], scenario: scenario.prompt, difficulty: level });
+      const d = res.data;
+      setMessages([{ id: nextId.current++, role: 'ai', text: d.reply, translation: d.translation, encouragement: d.encouragement, at: new Date() }]);
+      if (canSpeak()) speak(d.reply, langBcp(lang), { onStart: () => setSpeakingId(0), onEnd: () => setSpeakingId((cur) => (cur === 0 ? null : cur)) });
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  };
+
   const send = async (text) => {
     const userMessage = text.trim();
     if (!userMessage || busy) return;
+    const spoken = pendingVoice.current; pendingVoice.current = false;
+    const id = nextId.current++;
     const history = messages.map((m) => ({ role: m.role, text: m.text }));
-    setMessages((m) => [...m, { role: 'user', text: userMessage, at: new Date() }]);
+    setMessages((m) => [...m, { id, role: 'user', text: userMessage, at: new Date() }]);
+    if (spoken) analyseVoiceFor(id, userMessage); else capture.cancel();
     setInput(''); setBusy(true); setError('');
     try {
       const res = await api.conversation.chat({
@@ -56,7 +113,7 @@ export default function Conversation() {
       });
       const d = res.data;
       const idx = messages.length + 1; // index the AI reply will have
-      setMessages((m) => [...m, { role: 'ai', text: d.reply, translation: d.translation, correction: d.correction, encouragement: d.encouragement, at: new Date() }]);
+      setMessages((m) => [...m, { id: nextId.current++, role: 'ai', text: d.reply, translation: d.translation, correction: d.correction, encouragement: d.encouragement, at: new Date() }]);
       if (typeof d.score === 'number') setScores((s) => [...s, d.score]);
       if (canSpeak()) speak(d.reply, langBcp(lang), { onStart: () => setSpeakingId(idx), onEnd: () => setSpeakingId((cur) => (cur === idx ? null : cur)) });
     } catch (err) { setError(err.message); toast(err.message, 'error'); }
@@ -64,6 +121,21 @@ export default function Conversation() {
   };
 
   const speech = useSpeech(langBcp(lang), { onFinal: send });
+
+  // Start / stop speaking: the voice is recorded next to the speech recognition so it can be analysed afterwards.
+  const startVoice = async () => { pendingVoice.current = true; await capture.start(); speech.start(); };
+  // Speech recognition ended without any words: nothing to send, so throw the recording away.
+  const wasListening = useRef(false);
+  useEffect(() => {
+    if (wasListening.current && !speech.listening) {
+      const t = setTimeout(() => { if (pendingVoice.current) { pendingVoice.current = false; capture.cancel(); } }, 900);
+      wasListening.current = false;
+      return () => clearTimeout(t);
+    }
+    wasListening.current = speech.listening;
+    return undefined;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speech.listening]);
   const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
 
   // ── Setup ───────────────────────────────────────────────────────────────
@@ -71,7 +143,7 @@ export default function Conversation() {
     return (
       <>
         <PageHeader icon={Bot} title="AI Partner" subtitle="Have a real conversation in your target language. Your partner replies, translates and gently corrects you." />
-        <form className="card stack" style={{ gap: 22 }} onSubmit={(e) => { e.preventDefault(); setStarted(true); }}>
+        <form className="card stack" style={{ gap: 22 }} onSubmit={(e) => { e.preventDefault(); startConversation(); }}>
           <div className="grid grid-2">
             <div className="field" style={{ marginBottom: 0 }}>
               <label htmlFor="c-lang">Language to practise</label>
@@ -109,11 +181,11 @@ export default function Conversation() {
         subtitle={<span className="row wrap" style={{ gap: 8 }}><span className="chip">{scenario.label}</span><span className="chip">{langName(lang)}</span><span className="chip">{LEVELS.find(([v]) => v === level)[1]}</span>{avg !== null && <StatusBadge status="ok">Average score {avg}</StatusBadge>}</span>}
         actions={<button className="btn btn-outline btn-sm" onClick={() => { stopSpeaking(); setStarted(false); setMessages([]); setScores([]); setError(''); }}>Change setup</button>} />
 
-      <section className="card chat-box" aria-label="Conversation">
+      <section className="card chat-box ai-chat" aria-label="Conversation">
         <div className="messages" role="log" aria-live="polite" aria-relevant="additions">
-          {messages.length === 0 && <div className="state"><div className="state-icon" aria-hidden="true"><Bot size={26} /></div><h3>Say hello in {langName(lang)}</h3><p>Type a message or use the microphone to start.</p></div>}
+          {messages.length === 0 && !busy && <div className="state"><div className="state-icon" aria-hidden="true"><Bot size={26} /></div><h3>Say hello in {langName(lang)}</h3><p>Type a message or use the microphone. When you speak, your voice is analysed too.</p></div>}
           {messages.map((m, i) => (
-            <div key={i} className={`msg ${m.role === 'user' ? 'me' : 'them'}`}>
+            <div key={m.id ?? i} className={`msg ${m.role === 'user' ? 'me' : 'them'}`}>
               <div className="avatar-sm" aria-hidden="true">{m.role === 'user' ? 'You' : <Bot size={16} />}</div>
               <div className="msg-body">
                 <div className={`bubble ${m.role === 'user' ? 'me' : 'them'}`}>
@@ -126,6 +198,7 @@ export default function Conversation() {
                     </>
                   )}
                 </div>
+                {m.role === 'user' && m.voice && <VoiceNote voice={m.voice} />}
                 <div className="msg-meta">
                   <span>{hhmm(m.at)}</span>
                   {m.role === 'ai' && canSpeak() && (
@@ -149,7 +222,7 @@ export default function Conversation() {
 
         <form className="composer" onSubmit={(e) => { e.preventDefault(); send(input); }}>
           {speech.supported && (
-            <button type="button" className={`btn btn-icon ${speech.listening ? 'btn-danger' : 'btn-outline'}`} onClick={speech.listening ? speech.stop : speech.start} aria-label={speech.listening ? 'Stop voice input' : 'Start voice input'} aria-pressed={speech.listening}>
+            <button type="button" className={`btn btn-icon ${speech.listening ? 'btn-danger' : 'btn-outline'}`} onClick={speech.listening ? speech.stop : startVoice} aria-label={speech.listening ? 'Stop voice input' : 'Start voice input'} aria-pressed={speech.listening}>
               {speech.listening ? <MicOff size={18} aria-hidden="true" /> : <Mic size={18} aria-hidden="true" />}
             </button>
           )}

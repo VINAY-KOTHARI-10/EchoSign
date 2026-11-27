@@ -27,6 +27,8 @@ const PERMISSIONS = {
   // Administration
   'admin.panel':          { roles: ['ADMIN'], label: 'Open the admin panel' },
   'users.view':           { roles: ['ADMIN'], label: 'View all users' },
+  'people.view':          { roles: ['TEACHER', 'ADMIN'], label: 'Find people and see profiles (teachers: students in their own classes)' },
+  'people.edit':          { roles: ['ADMIN'], label: 'Edit anyone\'s profile' },
   'users.manage':         { roles: ['ADMIN'], label: 'Change roles and delete users' },
   'audit.view':           { roles: ['ADMIN'], label: 'View the audit log' },
   'languages.manage':     { roles: ['ADMIN'], label: 'Add and edit languages' },

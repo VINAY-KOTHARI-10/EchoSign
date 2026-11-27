@@ -2,7 +2,7 @@
 import { useUiStore } from '../store/uiStore';
 import { useEffect, useRef } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Video, BarChart3, Bot, Captions, ChevronDown, Download, Hand, History, LibraryBig, LogOut, Menu, Mic, Presentation, Shield, Sparkles, Trophy, User, Users, WifiOff, X } from 'lucide-react';
+import { UserSearch, Video, BarChart3, Bot, Captions, ChevronDown, Download, Hand, History, LibraryBig, LogOut, Menu, Mic, Presentation, Shield, Sparkles, User, Users, WifiOff, X } from 'lucide-react';
 import Logo from './Logo';
 import ThemeToggle from './ThemeToggle';
 import useOnline from '../hooks/useOnline';
@@ -20,7 +20,6 @@ const links = [
   { to: '/conversation', label: 'AI Partner', icon: Bot },
   { to: '/progress', label: 'Progress', icon: BarChart3 },
   { to: '/history', label: 'History', icon: History },
-  { to: '/leaderboard', label: 'Leaderboard', icon: Trophy },
   { to: '/community', label: 'Community', icon: Users },
   { to: '/profile', label: 'Profile', icon: User },
 ];
@@ -112,7 +111,9 @@ export default function AppShell() {
   const { isAdmin, can, logout } = useAuth();
   const navigate = useNavigate();
   // The menu follows the account's permissions: teachers get a dashboard, students do not.
-  const nav = can('analytics.class') ? [links[0], { to: '/teacher', label: 'Teacher dashboard', icon: Presentation }, ...links.slice(1)] : links;
+  let nav = can('analytics.class') ? [links[0], { to: '/teacher', label: 'Teacher dashboard', icon: Presentation }, ...links.slice(1)] : links;
+  // Teachers get a Directory of their own students, just before Profile. Admins find everyone in the admin panel.
+  if (can('people.view') && !isAdmin) nav = [...nav.slice(0, -1), { to: '/directory', label: 'Directory', icon: UserSearch }, nav[nav.length - 1]];
   return (
     <Frame
       brandTo="/classroom" nav={nav} subtitle="Accessible Classroom Assistant"

@@ -90,8 +90,44 @@ const FALLBACK_PHRASES = {
   ],
 };
 
+// More phrases for when the AI is unavailable, so a practice session still never repeats the same few sentences.
+const ph = (text, topic, difficulty, translation = '') => ({ text, phonetic: '', topic, difficulty, translation, tip: '' });
+FALLBACK_PHRASES.en.push(
+  ph('Nice to meet you.', 'Greetings', 'beginner'), ph('Where is the bathroom?', 'Travel', 'beginner'), ph('I would like a glass of water.', 'Food', 'beginner'),
+  ph('What time does the bus leave?', 'Transport', 'beginner'), ph('My name is Sam, and I am a student.', 'Introductions', 'beginner'), ph('Thank you very much for your help.', 'Manners', 'beginner'),
+  ph('How much does this cost?', 'Shopping', 'beginner'), ph('I am sorry, I did not understand.', 'Communication', 'beginner'),
+  ph('Could you tell me how to get to the station?', 'Directions', 'intermediate'), ph('I have been learning English for about two years.', 'Study', 'intermediate'),
+  ph('Would you mind opening the window, please?', 'Manners', 'intermediate'), ph('I am looking for a gift for my sister.', 'Shopping', 'intermediate'),
+  ph('The meeting has been moved to Thursday afternoon.', 'Work', 'intermediate'), ph('It usually rains a lot in the evening here.', 'Weather', 'intermediate'),
+  ph('I would rather stay at home than go out tonight.', 'Preferences', 'intermediate'), ph('Can you recommend a good restaurant nearby?', 'Food', 'intermediate'),
+  ph('Despite the delay, we managed to finish the project on time.', 'Work', 'advanced'), ph('She spoke so quietly that hardly anyone could hear her.', 'Description', 'advanced'),
+  ph('If I had known about the traffic, I would have left earlier.', 'Conditionals', 'advanced'), ph('The committee reached a decision after lengthy deliberation.', 'Formal', 'advanced'),
+  ph('Technology has fundamentally changed the way we communicate.', 'Society', 'advanced'), ph('Rarely have I seen such a remarkable performance.', 'Opinion', 'advanced'),
+);
+FALLBACK_PHRASES.fr.push(ph('Enchanté de faire votre connaissance.', 'Greetings', 'beginner'), ph('Où sont les toilettes, s’il vous plaît ?', 'Travel', 'beginner'), ph('Je voudrais un verre d’eau.', 'Food', 'beginner'), ph('Pouvez-vous m’indiquer le chemin de la gare ?', 'Directions', 'intermediate'));
+FALLBACK_PHRASES.es.push(ph('Mucho gusto en conocerte.', 'Greetings', 'beginner'), ph('¿Dónde está el baño, por favor?', 'Travel', 'beginner'), ph('Quisiera un vaso de agua.', 'Food', 'beginner'), ph('¿A qué hora sale el próximo autobús?', 'Transport', 'intermediate'));
+FALLBACK_PHRASES.de.push(ph('Freut mich, Sie kennenzulernen.', 'Greetings', 'beginner'), ph('Wo ist die Toilette, bitte?', 'Travel', 'beginner'), ph('Ich hätte gern ein Glas Wasser.', 'Food', 'beginner'), ph('Wann fährt der nächste Zug nach Berlin?', 'Transport', 'intermediate'));
+
+// Random topics for the AI to draw from, so every set of phrases is different from the last.
+const TOPICS = ['greetings', 'travel and directions', 'food and restaurants', 'work and study', 'shopping', 'feelings', 'weather', 'health and the doctor',
+  'family and friends', 'hobbies and sport', 'technology', 'culture and festivals', 'daily routine', 'money and banking', 'public transport', 'home and neighbours',
+  'making plans', 'asking for help', 'news and opinions', 'nature and animals'];
+const sample = (arr, n) => [...arr].sort(() => Math.random() - 0.5).slice(0, n);
+const shuffle = (arr) => sample(arr, arr.length);
+const norm = (t) => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
+
+// The phrases a learner can get without the AI: right level only, shuffled, never the ones they just practised.
+function pickFallback(lang, difficulty, avoid = []) {
+  const all = FALLBACK_PHRASES[lang] || FALLBACK_PHRASES.en;
+  const skip = new Set(avoid.map(norm));
+  let pool = all.filter((x) => x.difficulty === difficulty && !skip.has(norm(x.text)));
+  if (pool.length < 4) pool = all.filter((x) => !skip.has(norm(x.text)));
+  if (!pool.length) pool = all;
+  return shuffle(pool).slice(0, 8).map((x) => ({ ...x, translation: x.translation || '', tip: x.tip || '' }));
+}
+
 // ── Groq-powered phrase generation ───────────────────────────────────────────
-async function generatePhrasesFromGroq(language, languageName, difficulty) {
+async function generatePhrasesFromGroq(language, languageName, difficulty, avoid = []) {
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
   if (!GROQ_API_KEY) {
@@ -108,7 +144,10 @@ Instructions: ${diffConfig.instructions}
 
 Requirements:
 - Each phrase must be genuinely useful and culturally authentic
-- Cover diverse topics: greetings, travel, food, work, shopping, emotions, daily life, culture
+- This time draw the phrases from these topics (one or two each): ${sample(TOPICS, 4).join(', ')}
+- Every phrase must be different in structure and vocabulary from the others
+- Do NOT use any of these phrases the learner already practised: ${avoid.length ? avoid.slice(0, 20).map((x) => `"${x}"`).join('; ') : '(none)'}
+- Random seed for variety: ${Math.random().toString(36).slice(2, 8)}
 - Make phrases sound natural, not textbook-stiff
 - IPA phonetic transcription must be accurate for ${languageName}
 - Topic labels must be 1-2 words max
@@ -141,7 +180,7 @@ Respond ONLY with this exact JSON array, no other text, no markdown, no backtick
         },
         { role: 'user', content: prompt },
       ],
-      temperature: 0.85, // higher temp = more variety day-to-day
+      temperature: 1, // high on purpose: every set of phrases should differ from the last
       max_tokens: 1200,
     }),
   });
@@ -197,6 +236,7 @@ router.get('/daily', authenticate, async (req, res) => {
   const lang       = req.query.lang       || 'en';
   const difficulty = req.query.difficulty || 'intermediate';
   const forceRefresh = req.query.refresh  === '1';
+  const avoid = String(req.query.avoid || '').split('|').map((x) => x.trim()).filter(Boolean).slice(0, 20);
 
   const languageName = LANGUAGE_MAP[lang] || 'English';
   const cacheKey     = `${lang}:${difficulty}`;
@@ -229,36 +269,20 @@ router.get('/daily', authenticate, async (req, res) => {
 
   try {
     logger.info(`[Phrases] Generating fresh phrases for ${cacheKey} via Groq...`);
-    phrases  = await generatePhrasesFromGroq(lang, languageName, difficulty);
+    phrases  = await generatePhrasesFromGroq(lang, languageName, difficulty, avoid);
+    const skip = new Set(avoid.map(norm));
+    phrases = shuffle(phrases.filter((x) => !skip.has(norm(x.text))));
+    if (!phrases.length) throw new Error('Only repeated phrases came back');
     fromGroq = true;
   } catch (err) {
     logger.error(`[Phrases] Groq generation failed: ${err.message}`);
   }
 
-  // ── Fallback to static phrases ────────────────────────────────────────
-  if (!phrases) {
-    const fallback = FALLBACK_PHRASES[lang] || FALLBACK_PHRASES.en;
-    phrases = fallback.filter(p =>
-      difficulty === 'beginner'
-        ? p.difficulty === 'beginner'
-        : difficulty === 'advanced'
-          ? p.difficulty === 'advanced'
-          : true
-    );
-
-    // If filter leaves nothing, use all fallback phrases
-    if (phrases.length === 0) phrases = fallback;
-
-    // Add translation/tip fields if missing
-    phrases = phrases.map(p => ({
-      ...p,
-      translation: p.translation || '',
-      tip:         p.tip         || '',
-    }));
-  }
+  // ── Fallback to static phrases (shuffled, right level, no repeats) ───────
+  if (!phrases) phrases = pickFallback(lang, difficulty, avoid);
 
   // ── Store in cache ────────────────────────────────────────────────────
-  if (fromGroq && phrases) {
+  if (fromGroq && phrases && !forceRefresh) {
     phraseCache.set(cacheKey, { phrases, generatedAt: Date.now() });
   }
 
@@ -309,7 +333,7 @@ router.get('/random', authenticate, async (req, res) => {
 
   // Fallback
   if (!phrases || phrases.length === 0) {
-    phrases = FALLBACK_PHRASES[lang] || FALLBACK_PHRASES.en;
+    phrases = pickFallback(lang, difficulty);
   }
 
   const phrase = phrases[Math.floor(Math.random() * phrases.length)];

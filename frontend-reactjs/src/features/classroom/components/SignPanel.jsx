@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, CameraOff, Delete, Plus, Trash2 } from 'lucide-react';
 import { GESTURES } from '../../../lib/signGestures';
+import { GestureIcon } from '../../../components/GestureIcon';
 import { confidenceLabel } from '../../../lib/recognition';
 import { LETTERS } from '../../../lib/fingerspelling';
 import HandDiagram from '../../signs/components/HandDiagram';
@@ -70,8 +71,8 @@ export function SignCamera({ sign, signMode, setSignMode, word, setWord, autoSen
             <span>Your preview is shown on the caption stage above.</span></div>
         )}
         {sign.status === 'error' && (
-          <div className="sign-placeholder error" role="alert"><CameraOff size={28} aria-hidden="true" /><b>{sign.error || 'Could not start the camera'}</b>
-            <span>Allow camera access using the icon in your browser’s address bar, then try again.</span></div>
+          <div className="sign-placeholder error" role="alert"><CameraOff size={28} aria-hidden="true" /><b>Camera unavailable</b>
+            <span>{sign.error || 'Allow camera access using the icon in your browser’s address bar, then try again.'}</span></div>
         )}
       </div>
 
@@ -169,14 +170,14 @@ export function SignGuide({ sign, signMode, setSignMode, customGestures, canMana
           <div className="stack" style={{ gap: 8, marginTop: 12 }}>
             {GESTURES.map((g) => (
               <div key={g.id} className="row" style={{ fontSize: 14 }}>
-                <span style={{ fontSize: 22, width: 30 }} aria-hidden="true">{g.emoji}</span>
+                <span style={{ width: 30, color: 'var(--violet)', display: 'inline-flex' }}><GestureIcon id={g.id} /></span>
                 <span className="muted" style={{ width: 100 }}>{g.label}</span>
                 <b>“{g.phrase}”</b>
               </div>
             ))}
             {customGestures.map((g) => (
               <div key={g.id} className="row" style={{ fontSize: 14 }}>
-                <span style={{ fontSize: 22, width: 30 }} aria-hidden="true">✋</span>
+                <span style={{ width: 30, color: 'var(--violet)', display: 'inline-flex' }}><GestureIcon id="Open_Palm" /></span>
                 <span className="badge badge-info" style={{ width: 100, justifyContent: 'center' }}>Class sign</span>
                 <b style={{ flex: 1 }}>“{g.phrase}”</b>
                 {canManage && <button className="btn btn-ghost btn-sm btn-icon" onClick={() => remove(g.id)} aria-label={`Delete the class gesture for ${g.phrase}`}><Trash2 size={15} aria-hidden="true" /></button>}

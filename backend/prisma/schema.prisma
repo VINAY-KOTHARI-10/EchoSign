@@ -25,6 +25,8 @@ model User {
   avatar               String?
   achievements         Achievement[]
   chatMessages         ChatMessage[]
+  chatReactions        ChatReaction[]
+  chatRoomReads        ChatRoomRead[]
   sessions             PracticeSession[]
   profile              UserProfile?
   hostedClassrooms     Classroom[]
@@ -42,6 +44,9 @@ model UserProfile {
   avgAccuracy     Float    @default(0.0)
   streak          Int      @default(0)
   lastActiveAt    DateTime @default(now())
+  bio             String?
+  // Teachers and admins: the languages they teach. Used to show the right teachers in each language's community room.
+  teachingLanguages String[] @default([])
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_profiles")
@@ -76,15 +81,64 @@ model Achievement {
 }
 
 model ChatMessage {
-  id        String      @id @default(uuid())
+  id        String         @id @default(uuid())
   userId    String
   roomId    String
   content   String
-  type      MessageType @default(TEXT)
+  type      MessageType    @default(TEXT)
+  createdAt DateTime       @default(now())
+  // Community chat: a reply quotes an earlier message; deleting marks the row (the text is blanked) instead of removing it,
+  // so replies to it still show "This message was deleted".
+  replyToId String?
+  deletedAt DateTime?
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replyTo   ChatMessage?   @relation("ChatReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   ChatMessage[]  @relation("ChatReplies")
+  reactions ChatReaction[]
+  attachment ChatAttachment?
+
+  @@index([roomId, createdAt])
+  @@map("chat_messages")
+}
+
+// A file sent with a chat message (an image or a PDF, at most 2 MB). The bytes live in the database, so there is no extra storage
+// service to set up; removing the message removes the file.
+model ChatAttachment {
+  id        String      @id @default(uuid())
+  messageId String      @unique
+  name      String
+  mime      String
+  size      Int
+  data      Bytes
   createdAt DateTime    @default(now())
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@map("chat_attachments")
+}
+
+// One reaction per person per message (changing it replaces it; choosing it again removes it).
+model ChatReaction {
+  id        String      @id @default(uuid())
+  messageId String
+  userId    String
+  kind      String
+  createdAt DateTime    @default(now())
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
   user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("chat_messages")
+  @@unique([messageId, userId])
+  @@map("chat_reactions")
+}
+
+// Where each person has read up to in each room, for the unread counts.
+model ChatRoomRead {
+  userId     String
+  roomId     String
+  lastReadAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roomId])
+  @@map("chat_room_reads")
 }
 
 model Language {

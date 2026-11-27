@@ -31,6 +31,8 @@ const { verifyAccessToken } = require('../utils/jwtHelper');
 const { prisma } = require('../config/postgres');
 const logger = require('../utils/logger');
 const { isChatRoom } = require('../config/chatRooms');
+const { MESSAGE_INCLUDE, REACTION_KINDS, groupReactions, shapeMessage } = require('../utils/chatShape');
+const { validReplyTarget } = require('../controllers/chatController');
 const { PresenceRegistry } = require('./presenceRegistry');
 const codeGuess = require('../utils/codeGuess');
 const { canInClass, classRoleFor } = require('../config/permissions');
@@ -204,37 +206,66 @@ function initSocket(httpServer) {
     };
 
     // ── Community chat ───────────────────────────────────────────────────────
-    socket.on('chat:join', (roomId) => {
-      if (!isChatRoom(roomId)) return;
+    socket.on('chat:join', async (roomId) => {
+      if (!(await isChatRoom(roomId))) return;
       socket.join(`room:${roomId}`);
-      socket.to(`room:${roomId}`).emit('chat:userJoined', { userId: user.id, username: user.username, timestamp: new Date() });
     });
-    socket.on('chat:leave', (roomId) => {
-      if (!isChatRoom(roomId)) return;
+    socket.on('chat:leave', async (roomId) => {
+      if (!(await isChatRoom(roomId))) return;
       socket.leave(`room:${roomId}`);
-      socket.to(`room:${roomId}`).emit('chat:userLeft', { userId: user.id, username: user.username, timestamp: new Date() });
     });
     socket.on('chat:message', async (data) => {
       try {
-        if (!isObj(data) || !isChatRoom(data.roomId) || !socket.rooms.has(`room:${data.roomId}`)) return;
+        if (!isObj(data) || !socket.rooms.has(`room:${data.roomId}`) || !(await isChatRoom(data.roomId))) return;
         const content = cleanText(data.content, 2000);
         if (!content) return;
         if (!(await allow('chat', user.id))) return socket.emit('chat:error', { message: 'You are sending messages too fast' });
+        const replyToId = await validReplyTarget(data.replyToId, data.roomId);
         const message = await prisma.chatMessage.create({
-          data: { userId: user.id, content, roomId: data.roomId, type: 'TEXT' },
-          include: { user: { select: { id: true, username: true } } },
+          data: { userId: user.id, content, roomId: data.roomId, type: 'TEXT', replyToId },
+          include: MESSAGE_INCLUDE,
         });
-        io.to(`room:${data.roomId}`).emit('chat:message', {
-          id: message.id, content: message.content, roomId: message.roomId, user: message.user, createdAt: message.createdAt,
-        });
+        io.to(`room:${data.roomId}`).emit('chat:message', shapeMessage(message));
       } catch (err) {
         logger.error(`Socket chat:message error: ${err.message}`);
         socket.emit('chat:error', { message: 'Failed to send message' });
       }
     });
+    // Delete your own message: the row stays (so replies to it still make sense) but its text is gone for everyone.
+    socket.on('chat:delete', async (data) => {
+      try {
+        if (!isObj(data) || typeof data.messageId !== 'string') return;
+        const found = await prisma.chatMessage.findUnique({ where: { id: data.messageId }, select: { id: true, roomId: true, userId: true, deletedAt: true } });
+        if (!found || !(await isChatRoom(found.roomId)) || found.userId !== user.id || found.deletedAt) return;
+        await prisma.$transaction([
+          prisma.chatAttachment.deleteMany({ where: { messageId: found.id } }),
+          prisma.chatMessage.update({ where: { id: found.id }, data: { deletedAt: new Date(), content: '' } }),
+        ]);
+        io.to(`room:${found.roomId}`).emit('chat:deleted', { id: found.id, roomId: found.roomId });
+      } catch (err) {
+        logger.error(`Socket chat:delete error: ${err.message}`);
+        socket.emit('chat:error', { message: 'Could not delete the message' });
+      }
+    });
+    // React to a message with one of the fixed choices; sending the same choice again removes it, another choice replaces it.
+    socket.on('chat:react', async (data) => {
+      try {
+        if (!isObj(data) || typeof data.messageId !== 'string' || !REACTION_KINDS.includes(data.kind)) return;
+        if (!(await allow('chat', user.id))) return;
+        const msg = await prisma.chatMessage.findUnique({ where: { id: data.messageId }, select: { id: true, roomId: true, deletedAt: true } });
+        if (!msg || msg.deletedAt || !socket.rooms.has(`room:${msg.roomId}`) || !(await isChatRoom(msg.roomId))) return;
+        const mine = await prisma.chatReaction.findUnique({ where: { messageId_userId: { messageId: msg.id, userId: user.id } } });
+        if (mine && mine.kind === data.kind) await prisma.chatReaction.delete({ where: { id: mine.id } });
+        else await prisma.chatReaction.upsert({ where: { messageId_userId: { messageId: msg.id, userId: user.id } }, update: { kind: data.kind }, create: { messageId: msg.id, userId: user.id, kind: data.kind } });
+        const rows = await prisma.chatReaction.findMany({ where: { messageId: msg.id }, select: { kind: true, userId: true } });
+        io.to(`room:${msg.roomId}`).emit('chat:reactions', { id: msg.id, roomId: msg.roomId, reactions: groupReactions(rows) });
+      } catch (err) {
+        logger.error(`Socket chat:react error: ${err.message}`);
+      }
+    });
     socket.on('chat:typing', (data) => {
-      if (!isObj(data) || !isChatRoom(data.roomId) || !socket.rooms.has(`room:${data.roomId}`)) return;
-      socket.to(`room:${data.roomId}`).emit('chat:typing', { userId: user.id, username: user.username, isTyping: Boolean(data.isTyping) });
+      if (!isObj(data) || typeof data.roomId !== 'string' || !socket.rooms.has(`room:${data.roomId}`)) return; // only rooms already joined (joining checked the room)
+      socket.to(`room:${data.roomId}`).emit('chat:typing', { roomId: data.roomId, userId: user.id, username: user.username, isTyping: Boolean(data.isTyping) });
     });
 
     // ── Classroom ────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 'use strict';
 const { Router } = require('express');
 const { body } = require('express-validator');
-const { analyzeSpeech, getPronunciationHistory, getAccuracyTrend, getSkillBreakdown } = require('../../controllers/speechController');
+const { analyzeSpeech, analyzeVoice, getPronunciationHistory, getAccuracyTrend, getSkillBreakdown } = require('../../controllers/speechController');
 const { authenticate } = require('../../middleware/authMiddleware');
 const { speechRateLimiter } = require('../../middleware/rateLimiter');
 
@@ -15,6 +15,17 @@ router.post('/analyze', speechRateLimiter,
     body('language').optional().isLength({ min: 2, max: 10 }),
   ],
   analyzeSpeech
+);
+router.post('/analyze-voice', speechRateLimiter,
+  [
+    body('audio').isString().isLength({ min: 100, max: 480000 }),
+    body('mime').optional().isLength({ max: 60 }),
+    body('language').optional().isLength({ min: 2, max: 10 }),
+    body('targetText').optional({ values: 'falsy' }).isLength({ max: 500 }),
+    body('transcribedText').optional({ values: 'falsy' }).isLength({ max: 1000 }),
+    body('scenario').optional({ values: 'falsy' }).isLength({ max: 400 }),
+  ],
+  analyzeVoice
 );
 router.get('/history', getPronunciationHistory);
 router.get('/accuracy-trend', getAccuracyTrend);

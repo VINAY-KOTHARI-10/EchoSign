@@ -2,7 +2,8 @@
 'use strict';
 const { Router } = require('express');
 const { authenticate, requirePermission } = require('../../middleware/authMiddleware');
-const { invalidateLanguages } = require('../../config/languages');
+const { invalidateLanguages, LANGUAGES } = require('../../config/languages');
+const { roomIdFor } = require('../../config/chatRooms');
 const audit = require('../../Services/auditService');
 const { getOnlineCount } = require('../../sockets/socketManager');
 const AuthSession = require('../../models/mongo/AuthSession');
@@ -237,37 +238,69 @@ router.get('/audit', requirePermission('audit.view'), async (req, res, next) => 
   } catch (err) { next(err); }
 });
 
-// GET /api/v1/admin/languages  (includes inactive ones)
+// GET /api/v1/admin/languages
+// Every language that is in the app: the built-in ones (which can be hidden but not deleted) and the ones an admin added, with
+// how many people learn it, how many teachers teach it, and how much it is used. Hidden languages are included.
 router.get('/languages', async (req, res, next) => {
   try {
-    const languages = await prisma.language.findMany({ orderBy: { name: 'asc' } });
-    res.json({ success: true, data: { languages } });
+    const [rows, learners, teachers, sessions, classes] = await Promise.all([
+      prisma.language.findMany(),
+      prisma.$queryRaw`SELECT code, COUNT(*)::int AS n FROM (SELECT unnest("targetLanguages") AS code FROM user_profiles) t GROUP BY code`,
+      prisma.$queryRaw`SELECT code, COUNT(*)::int AS n FROM (SELECT unnest("teachingLanguages") AS code FROM user_profiles) t GROUP BY code`,
+      prisma.practiceSession.groupBy({ by: ['language'], _count: { _all: true } }),
+      prisma.classroom.groupBy({ by: ['language'], _count: { _all: true } }),
+    ]);
+    const rowBy = new Map(rows.map((r) => [r.code, r]));
+    const count = (list, key = 'code') => new Map(list.map((x) => [x[key], x.n ?? x._count?._all ?? 0]));
+    const L = count(learners); const T = count(teachers); const S = count(sessions, 'language'); const C = count(classes, 'language');
+    const built = new Set(LANGUAGES.map((l) => l.code));
+    const merged = [
+      ...LANGUAGES.map((l) => { const r = rowBy.get(l.code); return { code: l.code, name: r?.name || l.name, flag: r?.flag || '', builtin: true, active: r ? r.active : true }; }),
+      ...rows.filter((r) => !built.has(r.code)).map((r) => ({ code: r.code, name: r.name, flag: r.flag, builtin: false, active: r.active })),
+    ].map((l) => ({ ...l, learners: L.get(l.code) || 0, teachers: T.get(l.code) || 0, sessions: S.get(l.code) || 0, classes: C.get(l.code) || 0, room: roomIdFor(l.code) }));
+    merged.sort((x, y) => x.name.localeCompare(y.name));
+    res.json({ success: true, data: { languages: merged } });
   } catch (err) { next(err); }
 });
 
-// PATCH /api/v1/admin/languages/:id
-router.patch('/languages/:id', async (req, res, next) => {
+// PATCH /api/v1/admin/languages/:key   (the key is the language code)   body: { active?, name?, flag? }
+// A built-in language has no row until it is changed, so the first change creates one.
+router.patch('/languages/:key', async (req, res, next) => {
   try {
-    const { code, name, flag, active } = req.body;
-    const language = await prisma.language.update({
-      where: { id: req.params.id },
-      data: {
-        ...(code !== undefined && { code }),
-        ...(name !== undefined && { name }),
-        ...(flag !== undefined && { flag }),
-        ...(active !== undefined && { active: Boolean(active) }),
-      },
-    });
+    const key = String(req.params.key);
+    const { name, flag, active } = req.body || {};
+    const built = LANGUAGES.find((l) => l.code === key);
+    const row = await prisma.language.findFirst({ where: { OR: [{ code: key }, { id: key }] } });
+    if (!row && !built) return res.status(404).json({ success: false, error: 'Language not found' });
+    if (name !== undefined && (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 40)) return res.status(400).json({ success: false, error: 'Give the language a name of 2 to 40 characters.' });
+    const data = {
+      ...(name !== undefined && { name: name.trim() }),
+      ...(flag !== undefined && { flag: String(flag).trim().slice(0, 8) }),
+      ...(active !== undefined && { active: Boolean(active) }),
+    };
+    const language = row
+      ? await prisma.language.update({ where: { id: row.id }, data })
+      : await prisma.language.create({ data: { code: built.code, name: built.name, flag: '', active: true, ...data } });
     invalidateLanguages();
+    audit.record({ actor: req.user, action: 'language.update', targetType: 'language', targetId: language.code, meta: data, ip: req.ip });
     res.json({ success: true, data: { language } });
   } catch (err) { next(err); }
 });
 
-// DELETE /api/v1/admin/languages/:id
-router.delete('/languages/:id', async (req, res, next) => {
+// DELETE /api/v1/admin/languages/:key
+// Only languages an admin added can be deleted (the built-in ones are hidden instead). People who had it in their lists lose
+// it from them, and its community room disappears from the room list (its messages are kept).
+router.delete('/languages/:key', async (req, res, next) => {
   try {
-    await prisma.language.delete({ where: { id: req.params.id } });
-    audit.record({ actor: req.user, action: 'language.delete', targetType: 'language', targetId: req.params.id, ip: req.ip });
+    const key = String(req.params.key);
+    const row = await prisma.language.findFirst({ where: { OR: [{ code: key }, { id: key }] } });
+    if (!row) return res.status(404).json({ success: false, error: 'Language not found' });
+    if (LANGUAGES.some((l) => l.code === row.code)) return res.status(400).json({ success: false, error: 'A built-in language cannot be deleted. Hide it instead.' });
+    await prisma.$transaction([
+      prisma.$executeRaw`UPDATE user_profiles SET "targetLanguages" = array_remove("targetLanguages", ${row.code}), "teachingLanguages" = array_remove("teachingLanguages", ${row.code})`,
+      prisma.language.delete({ where: { id: row.id } }),
+    ]);
+    audit.record({ actor: req.user, action: 'language.delete', targetType: 'language', targetId: row.code, ip: req.ip });
     invalidateLanguages();
     res.json({ success: true, message: 'Language deleted' });
   } catch (err) { next(err); }

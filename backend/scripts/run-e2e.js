@@ -34,7 +34,8 @@ const env = {
   MONGODB_URI: mongo.toString(),
   BREVO_API_KEY: '',
   EMAIL_FROM: '',
-  GROQ_API_KEY: '',
+  // Blank by default so tests never call the AI; E2E_KEEP_GROQ=1 keeps the real key for a manual demo of the AI features.
+  GROQ_API_KEY: process.env.E2E_KEEP_GROQ ? process.env.GROQ_API_KEY : '',
   RATE_LIMIT_MAX: '100000',
   // Neon keeps a finished migrate connection (and its advisory lock) open for minutes. This schema is private to this
   // run, so the lock protects nothing here and would only make back-to-back runs time out.

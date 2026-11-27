@@ -3,6 +3,7 @@
 
 'use strict';
 const { Router } = require('express');
+const crypto = require('crypto');
 const { MODEL, extraParams } = require('../../utils/groq');
 const { authenticate } = require('../../middleware/authMiddleware');
 const logger = require('../../utils/logger');
@@ -16,9 +17,10 @@ router.use(authenticate);
  */
 router.post('/chat', async (req, res, next) => {
   try {
-    const { userMessage, language, conversationHistory = [], scenario, difficulty } = req.body;
+    const { userMessage, language, conversationHistory = [], scenario, difficulty, opening } = req.body;
 
-    if (!userMessage?.trim()) {
+    // `opening: true` asks the partner to start the conversation itself, so every session begins differently.
+    if (!opening && !userMessage?.trim()) {
       return res.status(400).json({
         success: false,
         error: 'userMessage is required',
@@ -48,14 +50,27 @@ router.post('/chat', async (req, res, next) => {
     const systemPrompt = `You are a friendly and encouraging language tutor teaching ${language}.
 Your job is to:
 1. Respond naturally in ${language} to keep the conversation going
-2. Gently correct grammar or pronunciation mistakes
-3. Give a pronunciation score from 0-100
+2. Gently correct grammar or word-choice mistakes
+3. Give a score from 0-100 for how correct their ${language} was (grammar and word choice: you read their words, you cannot hear them)
 4. Keep replies SHORT — maximum 2 sentences${scenario ? `
 Scenario: ${String(scenario).slice(0, 300)}` : ''}${difficulty ? `
 Difficulty: ${String(difficulty).slice(0, 20)} (adjust vocabulary and pace)` : ''}
 5. Always respond with valid JSON only, no markdown, no backticks, no extra text`;
 
-    const userPrompt = `${historyText ? `Conversation so far:\n${historyText}\n\n` : ''}Student just said: "${userMessage}"
+    const OPENERS = ['asks a question about the student\'s day', 'mentions a small, specific problem and asks for help', 'asks for the student\'s opinion on something', 'starts with a short, surprising remark and a question', 'asks about the student\'s plans', 'describes where they are and asks what the student would do'];
+    const angle = OPENERS[crypto.randomInt(OPENERS.length)];
+    const userPrompt = opening
+      ? `Start the conversation yourself. In your first message you ${angle}, staying strictly inside the scenario (you play the role the scenario gives you, for example the waiter in a restaurant or the interviewer in a job interview), so the learner can answer in character. Use specific, concrete details (a name, a place, a time) that you invent now, so it is different from any other session. Do not just say hello and ask how they are. Random seed: ${crypto.randomBytes(3).toString('hex')}
+
+Reply in this EXACT JSON format only, no other text:
+{
+  "reply": "your opening message in ${language}",
+  "translation": "english translation of your reply",
+  "correction": null,
+  "score": null,
+  "encouragement": "one brief friendly phrase inviting them to answer"
+}`
+      : `${historyText ? `Conversation so far:\n${historyText}\n\n` : ''}Student just said: "${userMessage}"
 
 Reply in this EXACT JSON format only, no other text:
 {
@@ -87,7 +102,7 @@ Reply in this EXACT JSON format only, no other text:
               content: userPrompt,
             },
           ],
-          temperature: 0.7,
+          temperature: opening ? 1 : 0.7,
           max_tokens: 500,
         }),
       }

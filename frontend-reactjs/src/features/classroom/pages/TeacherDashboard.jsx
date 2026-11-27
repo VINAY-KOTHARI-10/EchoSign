@@ -21,14 +21,16 @@ export default function TeacherDashboard() {
   const t = s.totals;
   const hours = t.lectureMinutes >= 60 ? `${Math.floor(t.lectureMinutes / 60)} h ${t.lectureMinutes % 60} min` : `${t.lectureMinutes} min`;
   const cards = [
-    { icon: BookOpenCheck, label: 'Classes', value: t.classrooms, bg: 'var(--violet-light)', color: 'var(--violet-dark)' },
-    { icon: CalendarCheck, label: 'Completed', value: t.completed, bg: 'var(--mint)', color: 'var(--go)' },
-    { icon: Captions, label: 'Live now', value: t.active, bg: 'var(--peach)', color: '#9a3412' },
-    { icon: Users, label: 'Attendance', value: t.attendance, bg: 'var(--violet-light)', color: 'var(--violet-dark)', hint: 'students across all classes' },
-    { icon: Captions, label: 'Captions', value: t.captions, bg: 'var(--mint)', color: 'var(--go)' },
+    { icon: BookOpenCheck, label: 'Classes', hint: 'started by you', value: t.classrooms, bg: 'var(--violet-light)', color: 'var(--violet-dark)' },
+    { icon: CalendarCheck, label: 'Completed', hint: 'finished classes', value: t.completed, bg: 'var(--mint)', color: 'var(--go)' },
+    { icon: Captions, label: 'Live now', hint: 'in progress', value: t.active, bg: 'var(--peach)', color: '#9a3412' },
+    { icon: Users, label: 'Attendance', value: t.attendance, bg: 'var(--violet-light)', color: 'var(--violet-dark)', hint: 'across all classes' },
+    { icon: Captions, label: 'Captions', hint: 'in all classes', value: t.captions, bg: 'var(--mint)', color: 'var(--go)' },
     { icon: Clock, label: 'Lecture time', value: hours, bg: '#fef3c7', color: '#8a4a05', hint: 'completed classes' },
-    { icon: Sparkles, label: 'Saved summaries', value: t.summaries, bg: 'var(--peach)', color: '#9a3412' },
+    { icon: Sparkles, label: 'Summaries', hint: 'saved notes', value: t.summaries, bg: 'var(--peach)', color: '#9a3412' },
   ];
+  const perClass = t.classrooms ? Math.round((t.captions / t.classrooms) * 10) / 10 : 0;
+  cards.splice(5, 0, { icon: Captions, label: 'Per class', hint: 'captions on average', value: perClass });
   const totalCaptions = SOURCES.reduce((n, [k]) => n + (s.bySource[k] || 0), 0);
 
   return (
@@ -40,7 +42,7 @@ export default function TeacherDashboard() {
         <div className="card"><EmptyState icon={Presentation} title="No classes yet">Start a class from the Classroom page. Attendance, captions and notes will appear here.</EmptyState></div>
       ) : (
         <>
-          <ul className="grid-stats plain-grid" style={{ marginBottom: 'var(--gap)' }} aria-label="Key numbers">
+          <ul className="grid-stats stats-8 plain-grid" style={{ marginBottom: 'var(--gap)' }} aria-label="Key numbers">
             {cards.map(({ icon: Icon, label, value, bg, color, hint }) => (
               <li className="card stat" key={label}>
                 <div className="num">{value}</div><div className="label">{label}</div>{hint && <div className="muted" style={{ fontSize: 12 }}>{hint}</div>}
@@ -48,9 +50,10 @@ export default function TeacherDashboard() {
             ))}
           </ul>
 
-          <div className="grid grid-2" style={{ alignItems: 'start', marginBottom: 'var(--gap)' }}>
+          <div className="grid grid-2" style={{ alignItems: 'stretch', marginBottom: 'var(--gap)' }}>
             <section className="card" aria-labelledby="src-h">
               <h2 id="src-h" className="card-title">How captions were made</h2>
+              <p className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Share of captions by how they were created.</p>
               {totalCaptions === 0 ? <EmptyState icon={Captions} title="No captions yet" /> : (
                 <ul className="bar-list">
                   {SOURCES.map(([k, label]) => (
@@ -66,7 +69,7 @@ export default function TeacherDashboard() {
               <h2 id="top-h" className="card-title">Topics you highlight most</h2>
               <p className="muted" style={{ fontSize: 13, marginBottom: 8 }}>From the keywords you set on your classes.</p>
               {s.topics.length === 0 ? <EmptyState icon={Sparkles} title="No keywords yet">Add keywords in a class’s Settings to see them here.</EmptyState> : (
-                <div className="pill-group">{s.topics.map((x) => <span key={x.topic} className="chip">{x.topic} · {x.classes}</span>)}</div>
+                <div className="pill-group">{s.topics.map((x) => <span key={x.topic} className="chip">{x.topic} · {x.classes} {x.classes === 1 ? 'class' : 'classes'}</span>)}</div>
               )}
             </section>
           </div>

@@ -15,13 +15,13 @@ import ClassroomHub from './features/classroom/pages/ClassroomHub';
 
 // Pages load when first visited, so the first screen only downloads what it needs.
 const Practice = lazy(() => import('./features/practice/pages/Practice'));
+const People = lazy(() => import('./features/people/pages/People'));
 const Conversation = lazy(() => import('./features/practice/pages/Conversation'));
 const History = lazy(() => import('./features/progress/pages/History'));
 const Leaderboard = lazy(() => import('./features/progress/pages/Leaderboard'));
 const Community = lazy(() => import('./features/community/pages/Community'));
 const Profile = lazy(() => import('./features/account/pages/Profile'));
 const AdminOverview = lazy(() => import('./features/admin/pages/Overview'));
-const AdminUsers = lazy(() => import('./features/admin/pages/Users'));
 const AdminSessions = lazy(() => import('./features/admin/pages/Sessions'));
 const AdminLanguages = lazy(() => import('./features/admin/pages/Languages'));
 const AdminClassrooms = lazy(() => import('./features/admin/pages/Classrooms'));
@@ -73,13 +73,18 @@ export default function App() {
           <Route element={<RequirePermission permission="analytics.class" need="Teacher" />}>
             <Route path="/teacher" element={<TeacherDashboard />} />
           </Route>
+          <Route element={<RequirePermission permission="people.view" need="Teacher" />}>
+            <Route path="/directory" element={<People />} />
+            <Route path="/people" element={<Navigate to="/directory" replace />} />
+          </Route>
         </Route>
       </Route>
 
       <Route element={<RequireAdmin />}>
         <Route element={<AdminShell />}>
           <Route path="/admin" element={<AdminOverview />} />
-          <Route path="/admin/users" element={<AdminUsers />} />
+          <Route path="/admin/directory" element={<People />} />
+          <Route path="/admin/users" element={<Navigate to="/admin/directory" replace />} />
           <Route path="/admin/sessions" element={<AdminSessions />} />
           <Route path="/admin/classrooms" element={<AdminClassrooms />} />
           <Route path="/admin/languages" element={<AdminLanguages />} />

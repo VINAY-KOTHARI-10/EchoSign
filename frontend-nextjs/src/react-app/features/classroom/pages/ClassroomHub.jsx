@@ -30,6 +30,7 @@ export default function ClassroomHub() {
   const dispatch = useDispatch();
   const recent = useSelector(selectRecentCodes);
   const [joinError, setJoinError] = useState('');
+  const [titleError, setTitleError] = useState('');
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
@@ -44,6 +45,8 @@ export default function ClassroomHub() {
 
   const create = async (e) => {
     e.preventDefault();
+    if (!form.title.trim()) { setTitleError('Give the class a title, so students know what they are joining.'); titleRef.current?.focus(); return; }
+    setTitleError('');
     setBusy(true);
     try {
       const res = await api.classrooms.create({ ...form, scheduledAt: form.scheduledAt ? new Date(form.scheduledAt).toISOString() : undefined });
@@ -59,7 +62,7 @@ export default function ClassroomHub() {
   const join = async (e) => {
     e.preventDefault();
     const code = joinCode.trim().toUpperCase();
-    if (code.length < 4) return setJoinError('Enter the class code your teacher shared (4–6 characters).');
+    if (code.length < 4) { codeRef.current?.focus(); return setJoinError('Enter the class code your teacher shared (4–6 characters).'); }
     setJoinError('');
     try {
       await dispatch(openClass(code)).unwrap(); // checks the class exists (async thunk) and remembers its code
@@ -95,12 +98,15 @@ export default function ClassroomHub() {
       )}
       <div className={`grid ${isTeacher ? 'grid-2' : 'grid-1'} role-cards`} style={{ marginTop: 'var(--gap)' }}>
         {isTeacher && (
-          <form className="card role-card" onSubmit={create} aria-labelledby="start-h">
+          <form className="card role-card" onSubmit={create} aria-labelledby="start-h" noValidate>
             <h2 id="start-h">Start a class <span className="muted role-tag">Teacher</span></h2>
             <p className="muted">Begin a live session with real-time captions for every student.</p>
             <div className="field">
               <label htmlFor="title">Class title</label>
-              <input id="title" ref={titleRef} className="input" required maxLength={120} placeholder="e.g. Physics — Newton’s laws" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
+              <input id="title" ref={titleRef} className="input" maxLength={120} placeholder="e.g. Physics — Newton’s laws" value={form.title}
+                onChange={(e) => { setForm((f) => ({ ...f, title: e.target.value })); setTitleError(''); }}
+                aria-invalid={Boolean(titleError)} aria-describedby={titleError ? 'title-error' : undefined} />
+              {titleError && <div id="title-error" className="error-text" role="alert" style={{ marginBottom: 0 }}>{titleError}</div>}
             </div>
             <div className="grid grid-2" style={{ gap: 12 }}>
               <div className="field">
@@ -114,6 +120,7 @@ export default function ClassroomHub() {
                 <input id="when" className="input" type="datetime-local" value={form.scheduledAt} onChange={(e) => setForm((f) => ({ ...f, scheduledAt: e.target.value }))} />
               </div>
             </div>
+            <p className="muted form-hint">You get a 6-character class code to share with your students.</p>
             <button className="btn btn-primary btn-lg btn-block" disabled={busy}><Plus size={18} aria-hidden="true" /> {busy ? 'Creating…' : 'Create class'}</button>
           </form>
         )}
@@ -129,8 +136,8 @@ export default function ClassroomHub() {
             {joinError && <div id="join-error" className="error-text" role="alert" style={{ marginBottom: 0 }}>{joinError}</div>}
           </div>
           {recent.length > 0 && (
-            <div className="row wrap" style={{ gap: 8, marginBottom: 12 }} role="group" aria-label="Recently opened classes">
-              <span className="muted" style={{ fontSize: 12, fontWeight: 600 }}>Recent:</span>
+            <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2 tw-mb-3" role="group" aria-label="Recently opened classes">
+              <span className="tw-text-xs tw-font-semibold tw-text-muted">Recent:</span>
               {recent.map((c) => (
                 <button key={c} type="button" className="btn btn-outline btn-sm mono" onClick={() => { setJoinCode(c); setJoinError(''); }}>{c}</button>
               ))}
@@ -164,9 +171,9 @@ export default function ClassroomHub() {
           {rooms === null ? <LoadingState label="Loading your classes…" />
             : loadError ? <ErrorState message={loadError} onRetry={load} />
             : rooms.length === 0 ? <EmptyState icon={Captions} title="No classes yet">Classes you start will appear here, with their transcripts.</EmptyState>
-            : shown.length === 0 ? <EmptyState icon={Search} title="No classes match">Try a different search or filter.</EmptyState> : (
+            : shown.length === 0 ? <EmptyState icon={Search} title="No classes match" action={<button className="btn btn-outline btn-sm" style={{ marginTop: 14 }} onClick={() => { setQuery(''); setFilter('all'); }}>Clear search and filters</button>}>Try a different search or filter.</EmptyState> : (
               <div className="table-wrap">
-                <table className="table">
+                <table className="table classes-table">
                   <caption className="sr-only">Classes you have hosted</caption>
                   <thead><tr><th scope="col">Class</th><th scope="col">Code</th><th scope="col">Status</th><th scope="col">Captions</th><th scope="col">Started</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
                   <tbody>

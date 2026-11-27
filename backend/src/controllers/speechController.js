@@ -9,7 +9,8 @@ const UserActivity = require('../models/mongo/UserActivity');
 const { prisma } = require('../config/postgres');
 const { AppError } = require('../middleware/errorMiddleware');
 const logger = require('../utils/logger');
-const { MODEL, extraParams } = require('../utils/groq');
+const { MODEL, extraParams, chatJSON } = require('../utils/groq');
+const voice = require('../utils/voiceAnalysis');
 
 /**
  * Analyze pronunciation using Groq API
@@ -242,6 +243,106 @@ function basicComparison(targetText, transcribedText, reason = 'AI analysis unav
   };
 }
 
+
+/**
+ * POST /api/v1/speech/analyze-voice
+ * Analyses the recorded VOICE, not only the words the browser recognised.
+ *   body: { audio (base64), mime, language, targetText?, transcribedText?, metrics?, scenario? }
+ *   - the clip is transcribed by Whisper with word times (what was really said, and how fast, with which pauses)
+ *   - with a targetText the words are aligned against it for a word-by-word score; without one (free conversation) only the
+ *     voice measurements, clarity and tips are returned
+ *   - pitch and loudness measured in the browser while recording (metrics) feed the intonation and stress estimates
+ * If the speech model is unavailable the browser's own transcript is compared instead; that result is labelled ai:false and
+ * never saved, exactly like the plain word comparison.
+ */
+const analyzeVoice = async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, details: errors.array() });
+
+    const { audio, mime = 'audio/webm', language = 'en', targetText = '', transcribedText = '', scenario = '' } = req.body;
+    const userId = req.user.id;
+    const buffer = Buffer.from(String(audio || ''), 'base64');
+    if (buffer.length < 1500) return res.status(400).json({ success: false, message: 'That recording is too short. Hold the microphone and say the whole phrase.' });
+
+    const client = voice.cleanClientMetrics(req.body.metrics);
+    const hasTarget = Boolean(String(targetText).trim());
+
+    let whisper = null; let reason = null;
+    try { whisper = await voice.transcribeAudio(buffer, mime, language); if (!whisper) reason = 'no AI key configured'; }
+    catch (err) { reason = err.message; logger.error('Voice analysis: speech model failed: ' + err.message); }
+
+    // The words to compare: Whisper's when it worked, otherwise what the browser recognised.
+    const heard = whisper ? whisper.text : String(transcribedText || '').trim();
+    if (!whisper && !heard) return res.status(503).json({ success: false, message: 'Voice analysis is unavailable right now. Please try again in a moment.' });
+
+    const timing = whisper ? voice.timingMetrics(whisper.words, language) : null;
+    const clarity = whisper ? voice.clarityScore(whisper.segments) : null;
+    const align = hasTarget ? voice.alignWords(targetText, heard) : null;
+    const fluency = voice.fluencyScore(timing);
+    const intonation = voice.intonationScore(client);
+    const stress = voice.stressScore(client);
+    const overall = align ? Math.round(clarity !== null ? align.accuracy * 0.75 + clarity * 0.25 : align.accuracy) : clarity;
+
+    // Advice: written by the AI from the measurements when it is available, otherwise built from the same measurements.
+    let advice = voice.measuredAdvice({ timing, client, clarity, align }); let adviceBy = 'measurements'; let summary = '';
+    if (whisper && heard) {
+      try {
+        const data = {
+          language, mode: hasTarget ? 'practise-a-phrase' : 'free-conversation', scenario: scenario || undefined,
+          targetPhrase: hasTarget ? targetText : undefined, heard,
+          wordResults: align ? align.words.map(({ word, heard: h, score, status }) => ({ word, heard: h, score, status })) : undefined,
+          timing, clarity, voice: client, scores: { overall, fluency, intonation, stress },
+        };
+        const out = await chatJSON(
+          'You are a kind, precise pronunciation coach. You are given MEASUREMENTS of a learner\'s recorded voice. Base every comment on them; never invent sounds, target numbers or problems that are not in the data. Rules: do not mention loudness level, average pitch in Hz, voiced ratio or decibels (the learner cannot act on them). Mention pitch only if the voice was flat (variation under 1.5 semitones) or very wide (over 6). Describe scores consistently: 80 and above is strong, 60 to 79 is okay, below 60 needs work. Higher scores are always better, and clarity is how confidently a speech model understood the clip, so never suggest anything that would lower a score. Write like a friendly human teacher talking to the learner: plain words, no jargon, and numbers only when they help (words per minute or the number of pauses). Praise what went well first, then give 2 or 3 practical tips about specific words, pauses or pace, not more. Do not number the tips; each is one specific sentence of at most 25 words that names the words or the measurement. If the delivery was good, say so briefly instead of inventing faults. Reply with JSON only.',
+          'Measurements:\n' + JSON.stringify(data) + '\n\nReturn {"summary": "two short sentences", "suggestions": ["2 to 4 specific, actionable tips that refer to the words or the measurements"], "wordNotes": {"<target word>": "short note on that word, only for words that were not correct"}}.',
+          { maxTokens: 700, temperature: 0.3 },
+        );
+        if (out && Array.isArray(out.suggestions) && out.suggestions.length) {
+          advice = out.suggestions.filter((x) => typeof x === 'string' && x.trim()).slice(0, 4);
+          adviceBy = 'ai';
+          summary = typeof out.summary === 'string' ? out.summary.slice(0, 400) : '';
+          if (align && out.wordNotes && typeof out.wordNotes === 'object') {
+            align.words.forEach((w) => { const n = out.wordNotes[w.word]; if (typeof n === 'string' && n.trim() && w.status !== 'correct') w.note = n.slice(0, 160); });
+          }
+        }
+      } catch (err) { logger.warn('Voice analysis: AI advice failed, using measurements: ' + err.message); }
+    }
+
+    const ai = Boolean(whisper);
+    let record = null;
+    if (ai && hasTarget) {
+      record = await PronunciationRecord.create({
+        userId, sessionId: `session_${Date.now()}`, language, targetText, transcribedText: heard || '(nothing heard)',
+        overallAccuracy: overall, fluencyScore: fluency ?? undefined, intonationScore: intonation ?? undefined, stressScore: stress ?? undefined,
+        phonemeAnalysis: [], aiSuggestions: advice,
+        wordsBreakdown: align.words.map((w) => ({ word: w.word, score: w.score })),
+        audioMetadata: { duration: timing?.spokenSeconds ?? client?.durationSec ?? undefined },
+        geminiResponse: { provider: 'whisper', model: voice.WHISPER_MODEL, adviceBy, timing, client },
+      });
+      const io = req.app.get('io');
+      if (io) io.to(`user:${userId}`).emit('pronunciation:analyzed', { recordId: record._id, accuracy: overall, timestamp: new Date() });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        recordId: record ? record._id : null,
+        ai, adviceBy, provider: ai ? 'whisper' : 'browser', reason: ai ? undefined : reason,
+        heard,
+        overallAccuracy: overall, fluencyScore: fluency, intonationScore: intonation, stressScore: stress, clarityScore: clarity,
+        suggestions: advice, summary,
+        wordsBreakdown: align ? align.words : [], extraWords: align ? align.extra : [],
+        voice: { timing, pitch: client ? { variationSemitones: client.pitchStdSemitones, rangeSemitones: client.pitchRangeSemitones, meanHz: client.pitchMeanHz } : null,
+          loudness: client ? { variationDb: client.loudnessStdDb, meanDb: client.loudnessMeanDb } : null, voicedRatio: client ? client.voicedRatio : null },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 /**
  * GET /api/v1/speech/history
  * Get user pronunciation history with pagination
@@ -330,4 +431,4 @@ const getSkillBreakdown = async (req, res, next) => {
   }
 };
 
-module.exports = { analyzeSpeech, getPronunciationHistory, getAccuracyTrend, getSkillBreakdown, basicComparison };
+module.exports = { analyzeSpeech, analyzeVoice, getPronunciationHistory, getAccuracyTrend, getSkillBreakdown, basicComparison };

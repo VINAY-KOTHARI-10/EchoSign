@@ -90,3 +90,9 @@ export const download = async (path, retried = false) => {
   const cd = res.headers.get('content-disposition') || '';
   return { blob: await res.blob(), filename: (cd.match(/filename="([^"]+)"/) || [])[1] || 'download', type: res.headers.get('content-type') || '' };
 };
+// Send a file as the request body (chat attachments). The server reads the bytes and checks what they really are.
+export const upload = async (path, body, headers = {}, retried = false) => {
+  const res = await fetch(`${API_URL}${path}`, { method: 'POST', credentials: 'include', headers: { ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...headers }, body });
+  if (res.status === 401 && !retried && (await refreshAccessToken())) return upload(path, body, headers, true);
+  return parse(res);
+};

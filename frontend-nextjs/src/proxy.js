@@ -10,7 +10,7 @@ import { isFresh } from '@/lib/jwt';
 import { applyCookieLines, clearLoginCookies, parseSetCookie } from '@/lib/cookies';
 
 // Every private page: the cloned EchoSign pages and the Next.js-only pages (overview, lectures, notes).
-const PROTECTED = ['classroom', 'signs', 'meet', 'dashboard', 'conversation', 'progress', 'history', 'leaderboard', 'community', 'profile', 'library', 'access', 'teacher', 'admin', 'overview', 'lectures', 'notes'];
+const PROTECTED = ['classroom', 'signs', 'meet', 'dashboard', 'conversation', 'progress', 'history', 'leaderboard', 'community', 'profile', 'library', 'access', 'teacher', 'directory', 'admin', 'overview', 'lectures', 'notes'];
 const BACKEND = (process.env.BACKEND_URL || 'http://localhost:5000').replace(/\/+$/, '');
 
 // The refresh token can be used once. When several requests arrive at the same moment with the same expired login (the

@@ -76,8 +76,9 @@ export function classifyLetter(lm) {
   const TOGETHER = 1.3; // tip gap / knuckle gap: fingers held side by side stay under this
 
   // ── Four fingers straight ──────────────────────────────────────────────
-  if (I === 'S' && M === 'S' && R === 'S' && P === 'S') {
-    const together = f.gap.im < TOGETHER && f.gap.mr < TOGETHER && f.gap.rp < 1.6; // the little finger is shorter and tends to splay a little
+  // A slightly bent little finger is still a B when the fingers are held close together (it is the finger that bends most under camera noise).
+  if (I === 'S' && M === 'S' && R === 'S' && (P === 'S' || (P === 'B' && f.gap.im < 1.15 && f.gap.mr < 1.15))) {
+    const together = f.gap.im < TOGETHER && f.gap.mr < TOGETHER && f.gap.rp < 2.0; // the little finger is shorter and tends to splay a little
     return !thumbOut && together ? pick('B', 0.85) : null; // spread open hand = "5", not a letter
   }
 

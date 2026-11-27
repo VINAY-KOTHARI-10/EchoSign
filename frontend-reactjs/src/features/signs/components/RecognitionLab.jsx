@@ -95,8 +95,8 @@ export default function RecognitionLab() {
           </p>
           <label className="check"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} /> I (the person signing) agree to save these hand-landmark samples in this browser and to export them for testing.</label>
 
-          <div className="grid grid-2" style={{ marginTop: 12 }}>
-            <div className="field"><label htmlFor="rl-signer">Signer label (anonymous, like P1)</label><input id="rl-signer" className="input" value={meta.signer} maxLength={20} onChange={(e) => setMeta((m) => ({ ...m, signer: e.target.value }))} /></div>
+          <div className="grid grid-2 form-grid">
+            <div className="field"><label htmlFor="rl-signer">Signer label (anonymous, like P1)</label><input id="rl-signer" className="input" placeholder="P1" value={meta.signer} maxLength={20} onChange={(e) => setMeta((m) => ({ ...m, signer: e.target.value }))} /></div>
             <div className="field"><label htmlFor="rl-target">Letter to sign</label>
               <select id="rl-target" className="select" value={target} onChange={(e) => setTarget(e.target.value)}>{TARGETS.map((l) => <option key={l}>{l}</option>)}</select></div>
             {Object.entries(OPTIONS).map(([key, opts]) => (
@@ -105,6 +105,7 @@ export default function RecognitionLab() {
             ))}
           </div>
           <button className="btn btn-primary btn-block" disabled={recording || sign.status !== 'running'} onClick={record}>{recording ? 'Recording… hold the letter' : `Record sample for “${target}”`}</button>
+          {sign.status !== 'running' && !recording && <p className="muted rl-hint">Start the camera first, then record.</p>}
         </section>
 
         <section className="card" aria-labelledby="rs-h">
@@ -112,7 +113,7 @@ export default function RecognitionLab() {
             <h2 id="rs-h" className="card-title" style={{ marginBottom: 0 }}>Results from {report.total} {report.total === 1 ? 'sample' : 'samples'}</h2>
             <label className="check" style={{ margin: 0 }}><input type="checkbox" checked={rescored} onChange={(e) => setRescored(e.target.checked)} /> Re-score with the current recogniser</label>
           </div>
-          {report.total === 0 ? <p className="muted">Record samples to see accuracy, precision, recall and a confusion matrix. Nothing is shown until there is real data.</p> : (
+          {report.total === 0 ? <p className="muted" style={{ fontSize: 14 }}>Record samples to see accuracy, precision, recall and a confusion matrix. Nothing is shown until there is real data.</p> : (
             <>
               <ul className="sign-readout plain-grid" style={{ margin: '0 0 12px' }} aria-label="Summary">
                 <li><dl><dt>Accuracy</dt><dd>{pct(report.accuracy)}</dd></dl></li>

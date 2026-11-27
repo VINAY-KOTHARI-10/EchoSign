@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Circle, Download, FileText, Printer, Search, Square } from 'lucide-react';
 import * as api from '../../../api';
-import { SOURCE_ICON, buildSrt, downloadText, parseClock, safeName, splitHighlights, timeOf } from '../../../lib/captions';
+import { SourceIcon } from '../../../components/GestureIcon';
+import { buildSrt, downloadText, parseClock, safeName, splitHighlights, timeOf } from '../../../lib/captions';
 import { useToast } from '../../../context/ToastContext';
 import { EmptyState, ErrorState, LoadingState } from '../../../components/ui';
 
@@ -120,7 +121,7 @@ export default function TranscriptPanel({ room, liveCaptions, onJump, canRecord,
                 {rows.map((c) => (
                   <button key={c.id} className="transcript-row" onClick={() => onJump?.(c.id)} title="Show in the live captions">
                     <span className="mono muted">{timeOf(c.createdAt)}</span>
-                    <span><b>{c.speakerName}{SOURCE_ICON[c.source]}</b>{' '}
+                    <span><b>{c.speakerName}<SourceIcon source={c.source} /></b>{' '}
                       {splitHighlights(c.text, [query.trim()]).map((p, i) => (p.hit ? <mark key={i} className="hit">{p.text}</mark> : <span key={i}>{p.text}</span>))}
                       {c.editedAt && <span className="caption-edited"> (corrected)</span>}</span>
                   </button>

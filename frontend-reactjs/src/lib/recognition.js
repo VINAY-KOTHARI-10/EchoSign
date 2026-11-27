@@ -9,7 +9,7 @@
 export const WINDOW_FRAMES = 18;       // about 0.6 s at 30 fps
 export const MIN_RATIO = 0.7;          // the top letter must fill at least 70% of the window
 export const RUNNER_UP_MAX = 0.3;      // a second letter in 30%+ of frames makes the shape ambiguous
-export const MIN_CONFIDENCE = 0.55;    // average rule confidence required to accept (A..Z rules give 0.5 to 0.85)
+export const MIN_CONFIDENCE = 0.5;     // average rule confidence required to accept (the rules give 0.5 to 0.85; E, M, N, T sit at 0.5 and must still be held longer)
 export const RELIABLE_VOTES = 11;      // frames needed for a well-separated letter
 export const SHAKY_VOTES = 14;         // letters that look alike (A E M N S T) must be held longer
 export const SHAKY = new Set(['A', 'E', 'M', 'N', 'S', 'T']);

@@ -1,7 +1,8 @@
 // CaptionStage - real-time caption display component
 import { memo, useEffect, useRef, useState } from 'react';
 import { ArrowDown, Pencil } from 'lucide-react';
-import { SOURCE_ICON, splitHighlights } from '../../../lib/captions';
+import { splitHighlights } from '../../../lib/captions';
+import { SourceIcon } from '../../../components/GestureIcon';
 import { useToast } from '../../../context/ToastContext';
 
 // React.memo: a caption line only re-renders when its own text or the keyword list changes, not on every new caption.
@@ -67,7 +68,7 @@ export default function CaptionStage({
           const tr = translations?.[translationKey(c)];
           return (
             <div key={c.id} data-id={c.id} className={`caption-line ${flashId === c.id ? 'flash' : ''}`}>
-              {prefs.showNames && <span className="caption-who">{c.speakerName}{SOURCE_ICON[c.source]}</span>}
+              {prefs.showNames && <span className="caption-who">{c.speakerName}<SourceIcon source={c.source} /></span>}
               {editing?.id === c.id ? (
                 <form className="row" onSubmit={(e) => { e.preventDefault(); save(); }}>
                   <input className="input" autoFocus value={editing.text} maxLength={500} style={{ fontSize: 18 }}
@@ -92,7 +93,7 @@ export default function CaptionStage({
 
         {interim && !prefs.paceWpm && (
           <div className="caption-line" style={{ opacity: 0.6 }}>
-            {prefs.showNames && <span className="caption-who">{interim.speakerName}{SOURCE_ICON[interim.source]}</span>}
+            {prefs.showNames && <span className="caption-who">{interim.speakerName}<SourceIcon source={interim.source} /></span>}
             {interim.text}…
           </div>
         )}

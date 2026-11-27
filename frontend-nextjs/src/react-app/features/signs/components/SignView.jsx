@@ -1,5 +1,6 @@
 import { Camera, CameraOff } from 'lucide-react';
 import { StatusBadge } from '../../../components/ui';
+import { GestureIcon } from '../../../components/GestureIcon';
 import { signStatus } from '../../classroom/components/SignPanel';
 
 // Camera preview with every state spelled out: off, starting, running (with the held gesture), error.
@@ -23,7 +24,7 @@ export default function SignView({ sign }) {
             <div className="sign-overlay sign-current" aria-hidden="true">
               {sign.current.letter
                 ? <span className="sign-big">{sign.current.letter}</span>
-                : <><span style={{ fontSize: 28 }}>{sign.current.emoji}</span> {sign.current.phrase}</>}
+                : <><span style={{ display: 'inline-flex', verticalAlign: 'middle', marginRight: 8 }}><GestureIcon id={String(sign.current.id).startsWith('custom:') ? 'Open_Palm' : sign.current.id} size={26} /></span>{sign.current.phrase}</>}
               <div className="bar"><i style={{ width: `${sign.progress * 100}%` }} /></div>
             </div>
           )}
@@ -33,8 +34,8 @@ export default function SignView({ sign }) {
             <span>Your video stays on this device and is never uploaded.</span></div>
         )}
         {sign.status === 'error' && (
-          <div className="sign-placeholder error" role="alert"><CameraOff size={28} aria-hidden="true" /><b>{sign.error || 'Could not start the camera'}</b>
-            <span>Allow camera access using the icon in your browser’s address bar, then try again.</span></div>
+          <div className="sign-placeholder error" role="alert"><CameraOff size={28} aria-hidden="true" /><b>Camera unavailable</b>
+            <span>{sign.error || 'Allow camera access using the icon in your browser’s address bar, then try again.'}</span></div>
         )}
       </div>
       <button className={`btn btn-block ${running ? 'btn-outline' : 'btn-primary'}`} style={{ marginTop: 12 }} onClick={running ? sign.stop : sign.start}>

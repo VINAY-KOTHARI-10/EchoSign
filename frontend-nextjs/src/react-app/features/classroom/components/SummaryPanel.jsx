@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, Printer } from 'lucide-react';
+import { AlertTriangle, Check, Printer, X } from 'lucide-react';
 import * as api from '../../../api';
 import { printHtml } from '../../../lib/captions';
 import { useToast } from '../../../context/ToastContext';
@@ -14,20 +14,31 @@ function Quiz({ quiz }) {
 
   return (
     <div className="stack">
-      {quiz.map((q, i) => (
-        <div key={i} className="quiz-q">
-          <b>{i + 1}. {q.question}</b>
-          <div className="stack" style={{ gap: 6, marginTop: 8 }}>
-            {q.options.map((o, j) => {
-              const chosen = picked[i] === j; const done = picked[i] !== undefined;
-              const cls = done ? (j === q.answerIndex ? 'right' : chosen ? 'wrong' : '') : '';
-              return <button key={j} className={`quiz-opt ${cls}`} disabled={done} onClick={() => setPicked((p) => ({ ...p, [i]: j }))}>{o}</button>;
-            })}
+      {quiz.map((q, i) => {
+        const done = picked[i] !== undefined;
+        return (
+          <div key={i} className="quiz-q">
+            <b>{i + 1}. {q.question}</b>
+            <div className="quiz-options">
+              {q.options.map((o, j) => {
+                const chosen = picked[i] === j;
+                const isRight = j === q.answerIndex;
+                const cls = done ? (isRight ? 'right' : chosen ? 'wrong' : '') : '';
+                return (
+                  <button key={j} className={`quiz-opt ${cls}`} disabled={done} onClick={() => setPicked((p) => ({ ...p, [i]: j }))}>
+                    <span className="quiz-key" aria-hidden="true">{'ABCD'[j]}</span>
+                    <span className="quiz-text">{o}</span>
+                    {done && isRight && <span className="quiz-mark"><Check size={16} aria-hidden="true" /> Correct answer</span>}
+                    {done && chosen && !isRight && <span className="quiz-mark"><X size={16} aria-hidden="true" /> Your answer</span>}
+                  </button>
+                );
+              })}
+            </div>
+            {done && q.explanation && <p className="quiz-why">{q.explanation}</p>}
           </div>
-        </div>
-      ))}
-      {quiz.map((q, i) => (picked[i] !== undefined && q.explanation ? <p key={`e${i}`} className="muted" style={{ fontSize: 13 }}><b>{i + 1}.</b> {q.explanation}</p> : null))}
-      {answered === quiz.length && <div className="chip chip-go" style={{ alignSelf: 'flex-start' }}>You scored {correct} / {quiz.length}</div>}
+        );
+      })}
+      {answered === quiz.length && <div className={`chip ${correct === quiz.length ? 'chip-go' : ''}`} style={{ alignSelf: 'flex-start' }} role="status">You scored {correct} of {quiz.length}</div>}
     </div>
   );
 }

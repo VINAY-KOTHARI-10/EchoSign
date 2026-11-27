@@ -1,4 +1,4 @@
-import { download, request, qs } from './client';
+import { download, request, qs, upload } from './client';
 
 export const auth = {
   register: (d) => request('POST', '/auth/register', d),
@@ -27,13 +27,27 @@ export const sessions = {
 
 export const speech = {
   analyze: (d) => request('POST', '/speech/analyze', d),
+  analyzeVoice: (d) => request('POST', '/speech/analyze-voice', d),
   history: (p) => request('GET', `/speech/history${qs(p)}`),
   trend: (days = 30) => request('GET', `/speech/accuracy-trend?days=${days}`),
   skills: (days = 30) => request('GET', `/speech/skill-breakdown?days=${days}`),
 };
 
+// People directory (teachers: their students; admins: everyone, and they can edit)
+export const people = {
+  list: (p) => request('GET', `/people${qs(p)}`),
+  get: (id) => request('GET', `/people/${id}`),
+  update: (id, d) => request('PATCH', `/people/${id}`, d),
+  create: (d) => request('POST', '/people', d),
+};
+
 export const chat = {
   messages: (roomId = 'global', page = 1) => request('GET', `/chat/messages${qs({ roomId, page })}`),
+  rooms: () => request('GET', '/chat/rooms'),
+  markRead: (roomId) => request('POST', `/chat/rooms/${roomId}/read`),
+  // a message with a file (image or PDF, at most 2 MB); the caption and the message being replied to are optional
+  upload: (roomId, file, { caption, replyToId } = {}) => upload(`/chat/attachments${qs({ roomId, caption, replyToId })}`, file, { 'Content-Type': file.type, 'X-File-Name': encodeURIComponent(file.name) }),
+  attachment: (id) => download(`/chat/attachments/${id}`),
 };
 
 export const languages = {
@@ -82,6 +96,6 @@ export const admin = {
   classrooms: (p) => request('GET', `/admin/classrooms${qs(p)}`),
   languages: () => request('GET', '/admin/languages'),
   addLanguage: (d) => request('POST', '/languages', d),
-  updateLanguage: (id, d) => request('PATCH', `/admin/languages/${id}`, d),
-  deleteLanguage: (id) => request('DELETE', `/admin/languages/${id}`),
+  updateLanguage: (code, d) => request('PATCH', `/admin/languages/${code}`, d),
+  deleteLanguage: (code) => request('DELETE', `/admin/languages/${code}`),
 };

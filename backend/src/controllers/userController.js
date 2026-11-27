@@ -5,6 +5,7 @@ const { prisma } = require('../config/postgres');
 const UserActivity = require('../models/mongo/UserActivity');
 const { AppError } = require('../middleware/errorMiddleware');
 const { activeLanguages } = require('../config/languages');
+const { cleanUsername, cleanBio, cleanLanguages } = require('../utils/profileInput');
 
 const getMe = async (req, res, next) => {
   try {
@@ -23,31 +24,33 @@ const getMe = async (req, res, next) => {
 };
 
 
-// PATCH /users/profile: the person's native language and the languages they are learning.
-// Validated (only supported codes, no duplicates, a sane count) and created on demand, so an account that somehow has
-// no profile row (older sign-ups, a failed first write) can still save preferences instead of getting a 500.
+// PATCH /users/profile: the person's own username, about-me, native language and the languages they are learning.
+// Validated (see utils/profileInput.js) and created on demand, so an account that somehow has no profile row (older sign-ups,
+// a failed first write) can still save instead of getting a 500. Any role may edit their own profile.
 const updateProfile = async (req, res, next) => {
   try {
-    const { nativeLanguage, targetLanguages } = req.body || {};
-    const data = { lastActiveAt: new Date() };
-
+    const body = req.body || {};
+    const profileData = { lastActiveAt: new Date() };
+    const userData = {};
+    if (body.username !== undefined) userData.username = cleanUsername(body.username);
+    if (body.bio !== undefined) profileData.bio = cleanBio(body.bio);
     const valid = new Set((await activeLanguages(prisma)).map((l) => l.code)); // the same list the Languages admin page controls
-    if (nativeLanguage !== undefined) {
-      if (typeof nativeLanguage !== 'string' || !valid.has(nativeLanguage)) throw new AppError('Choose one of the supported native languages.', 400, 'INVALID_LANGUAGE');
-      data.nativeLanguage = nativeLanguage;
-    }
-    if (targetLanguages !== undefined) {
-      if (!Array.isArray(targetLanguages) || targetLanguages.some((c) => typeof c !== 'string')) throw new AppError('Choose languages from the supported list.', 400, 'INVALID_LANGUAGE');
-      // A language an admin has since switched off is simply dropped, so someone can still save the rest.
-      data.targetLanguages = [...new Set(targetLanguages.filter((c) => valid.has(c)))];
-    }
+    Object.assign(profileData, cleanLanguages(body, valid));
+    if (body.teachingLanguages !== undefined && !['TEACHER', 'ADMIN'].includes(req.user.role)) throw new AppError('Only teachers can choose the languages they teach.', 403, 'FORBIDDEN');
 
-    const profile = await prisma.userProfile.upsert({
-      where: { userId: req.user.id },
-      update: data,
-      create: { userId: req.user.id, nativeLanguage: data.nativeLanguage || 'en', targetLanguages: data.targetLanguages || [] },
-    });
-    res.json({ success: true, data: { profile } });
+    let profile;
+    try {
+      if (Object.keys(userData).length) await prisma.user.update({ where: { id: req.user.id }, data: userData });
+      profile = await prisma.userProfile.upsert({
+        where: { userId: req.user.id },
+        update: profileData,
+        create: { userId: req.user.id, nativeLanguage: profileData.nativeLanguage || 'en', targetLanguages: profileData.targetLanguages || [], teachingLanguages: profileData.teachingLanguages || [], bio: profileData.bio ?? null },
+      });
+    } catch (err) {
+      if (err.code === 'P2002') throw new AppError('That username is already taken.', 409, 'USERNAME_TAKEN');
+      throw err;
+    }
+    res.json({ success: true, data: { profile, username: userData.username } });
   } catch (error) {
     next(error);
   }

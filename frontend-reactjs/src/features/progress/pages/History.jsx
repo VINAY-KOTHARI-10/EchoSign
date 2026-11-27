@@ -71,12 +71,11 @@ function PracticeHistory() {
           <div className="table-wrap">
             <table className="table">
               <caption className="sr-only">Your practice sessions</caption>
-              <thead><tr><th scope="col">Date</th><th scope="col">Type</th><th scope="col">Language</th><th scope="col">Accuracy</th><th scope="col">Duration</th><th scope="col">Transcript</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+              <thead><tr><th scope="col">Date</th><th scope="col">Language</th><th scope="col">Accuracy</th><th scope="col">Duration</th><th scope="col">Transcript</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>
                 {data.sessions.map((s) => (
                   <tr key={s.id}>
-                    <td>{formatDate(s.createdAt)}</td>
-                    <td>Practice</td>
+                    <td>{new Date(s.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</td>
                     <td>{langName(s.language)}</td>
                     <td><StatusBadge status={tone(s.accuracy)}>{Math.round(s.accuracy)}%</StatusBadge></td>
                     <td>{formatDuration(s.duration)}</td>
@@ -131,10 +130,10 @@ function ClassHistory() {
           <div className="table-wrap">
             <table className="table">
               <caption className="sr-only">Classes you have hosted</caption>
-              <thead><tr><th scope="col">Date</th><th scope="col">Type</th><th scope="col">Class</th><th scope="col">Language</th><th scope="col">Captions</th><th scope="col">Status</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+              <thead><tr><th scope="col">Class</th><th scope="col">Date</th><th scope="col">Language</th><th scope="col">Captions</th><th scope="col">Status</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>{shown.map((r) => (
                 <tr key={r.id}>
-                  <td>{formatDate(r.createdAt)}</td><td>Classroom</td><th scope="row" style={{ textAlign: 'left', fontWeight: 700 }}>{r.title}</th><td>{langName(r.language)}</td><td>{r.captionCount}</td>
+                  <th scope="row" style={{ textAlign: 'left', fontWeight: 700 }}>{r.title}</th><td>{formatDate(r.createdAt)}</td><td>{langName(r.language)}</td><td>{r.captionCount}</td>
                   <td>{r.active ? <StatusBadge status="live">Live</StatusBadge> : <StatusBadge status="ended">Ended</StatusBadge>}</td>
                   <td style={{ textAlign: 'right' }}><Link to={`/classroom/${r.code}`} className="btn btn-outline btn-sm">{r.active ? 'Open' : 'View transcript'}</Link></td>
                 </tr>

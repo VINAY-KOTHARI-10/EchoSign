@@ -37,7 +37,7 @@ export default function Library() {
       <PageHeader icon={LibraryBig} title="My lectures" subtitle="Classes you joined, with their notes, quizzes and full transcripts." />
       {!online && <p className="conn-banner" role="status"><WifiOff size={18} aria-hidden="true" /> You are offline. Notes you opened before are still available; live classes and transcripts need a connection.</p>}
       {error && !data ? <div className="card"><ErrorState message={error} onRetry={load} /></div> : !data ? <div className="card"><LoadingState label="Loading your lectures…" /></div> : data.classes.length === 0 ? (
-        <div className="card"><EmptyState icon={LibraryBig} title="No lectures yet">When you join a class with its code, it is saved here so you can come back to the transcript and notes.</EmptyState></div>
+        <div className="card"><EmptyState icon={LibraryBig} title="No lectures yet" action={<Link to="/classroom" className="btn btn-primary btn-sm" style={{ marginTop: 14 }}>Join a class</Link>}>When you join a class with its code, it is saved here so you can come back to the transcript and notes.</EmptyState></div>
       ) : (
         <>
           {error && <p className="error-text" role="alert">Showing saved results. {error}</p>}
@@ -48,12 +48,12 @@ export default function Library() {
                   <h2 style={{ fontSize: 18 }}>{c.title}</h2>
                   {c.active ? <StatusBadge status="live">Live</StatusBadge> : <StatusBadge status="ended">Ended</StatusBadge>}
                 </div>
-                <p className="muted" style={{ fontSize: 14 }}>{c.teacher} · {formatDate(c.date)}</p>
-                <p className="muted" style={{ fontSize: 13 }}>{c.captions} captions · you attended {c.minutesAttended} min</p>
-                <div className="pill-group" style={{ margin: '10px 0' }}>
-                  {c.hasNotes ? <StatusBadge status="ok">{c.noteCount} notes{c.quizCount ? ` · ${c.quizCount} quiz questions` : ''}</StatusBadge> : <StatusBadge status="off">No notes yet</StatusBadge>}
+                <p className="muted lecture-meta">{c.teacher} · {formatDate(c.date)}</p>
+                <p className="muted lecture-meta">{c.captions} captions · you attended {c.minutesAttended} min</p>
+                <div className="pill-group lecture-notes">
+                  {c.hasNotes ? <StatusBadge status="ok">{c.noteCount} {c.noteCount === 1 ? 'note' : 'notes'}{c.quizCount ? ` · ${c.quizCount} quiz ${c.quizCount === 1 ? 'question' : 'questions'}` : ''}</StatusBadge> : <StatusBadge status="off">No notes yet</StatusBadge>}
                 </div>
-                <div className="row wrap" style={{ gap: 8 }}>
+                <div className="row wrap lecture-actions">
                   <Link to={`/classroom/${c.code}`} className="btn btn-primary btn-sm"><FileText size={15} aria-hidden="true" /> {c.active ? 'Open class' : 'Transcript & Ask'}</Link>
                   {c.hasNotes && <Link to={`/library/${c.code}`} className="btn btn-outline btn-sm">Notes (works offline)</Link>}
                 </div>

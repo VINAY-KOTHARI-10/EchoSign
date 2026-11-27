@@ -7,6 +7,7 @@ import { EmptyState, PageHeader, StatusBadge, TabPanel, Tabs } from '../../../co
 import useSignRecognition from '../hooks/useSignRecognition';
 import { LETTERS } from '../../../lib/fingerspelling';
 import { GESTURES } from '../../../lib/signGestures';
+import { GestureIcon } from '../../../components/GestureIcon';
 
 const TABS = [{ id: 'dictionary', label: 'Dictionary' }, { id: 'practice', label: 'Practice' }, { id: 'text', label: 'Text to sign' }, { id: 'test', label: 'Recognition test' }];
 const ALL = Object.keys(LETTERS);
@@ -49,6 +50,7 @@ function Dictionary() {
   };
 
   return (
+    <>
     <div className="lab-layout">
       <div className="stack">
         <div className="card">
@@ -79,47 +81,9 @@ function Dictionary() {
             </ul>
           )}
         </div>
-
-        <div className="grid grid-2">
-          <section className="card" aria-labelledby="sup-h">
-            <h2 id="sup-h" className="card-title">Supported</h2>
-            <ul className="plain-list">
-              <li>ASL fingerspelling A–Z (J and Z need a motion)</li>
-              <li>7 phrase gestures used in class (below)</li>
-              <li>Custom gestures a teacher records for the class</li>
-            </ul>
-          </section>
-          <section className="card" aria-labelledby="unsup-h">
-            <h2 id="unsup-h" className="card-title">Not supported</h2>
-            <ul className="plain-list">
-              <li>Full sign-language sentences or grammar</li>
-              <li>Other sign languages (BSL, ISL…) — letters are ASL</li>
-              <li>Two-handed signs and moving signs other than J and Z</li>
-            </ul>
-          </section>
-        </div>
-
-        <section className="card" aria-labelledby="phr-h">
-          <h2 id="phr-h" className="card-title">Phrase gestures</h2>
-          <ul className="grid grid-3 plain-grid">
-            {GESTURES.map((g) => (
-              <li key={g.id} className="row" style={{ gap: 12 }}>
-                <span style={{ fontSize: 32 }} aria-hidden="true">{g.emoji}</span>
-                <div><b>“{g.phrase}”</b><div className="muted" style={{ fontSize: 13 }}>{g.label}</div></div>
-              </li>
-            ))}
-          </ul>
-        </section>
       </div>
 
       <aside className="stack lab-side" ref={sideRef} aria-label="Selected sign and live try-out">
-        <section className="card" aria-labelledby="sel-h">
-          <div className="row between"><h2 id="sel-h" className="card-title" style={{ marginBottom: 0 }}>Letter {selected}</h2><StatusBadge status={tone}>{label}</StatusBadge></div>
-          <div className="selected-diagram"><HandDiagram letter={selected} size={150} label={false} /></div>
-          <p style={{ fontWeight: 600 }}>{LETTERS[selected].hint}</p>
-          {LETTERS[selected].motion && <p className="muted" style={{ fontSize: 13, marginTop: 6 }}>Make the shape, then draw the letter in the air with your fingertip.</p>}
-        </section>
-
         <section className="card" aria-labelledby="try-h">
           <h2 id="try-h" className="card-title">Try it live</h2>
           <SignView sign={sign} />
@@ -131,8 +95,47 @@ function Dictionary() {
             ) : <span className="muted">Nothing yet</span>}
           </div>
         </section>
+
+        <section className="card" aria-labelledby="sel-h">
+          <div className="row between"><h2 id="sel-h" className="card-title" style={{ marginBottom: 0 }}>Letter {selected}</h2><StatusBadge status={tone}>{label}</StatusBadge></div>
+          <div className="selected-diagram"><HandDiagram letter={selected} size={150} label={false} /></div>
+          <p style={{ fontWeight: 600 }}>{LETTERS[selected].hint}</p>
+          {LETTERS[selected].motion && <p className="muted" style={{ fontSize: 13, marginTop: 6 }}>Make the shape, then draw the letter in the air with your fingertip.</p>}
+        </section>
+
+        <section className="card" aria-labelledby="phr-h">
+          <h2 id="phr-h" className="card-title">Phrase gestures</h2>
+          <ul className="phrase-list plain-grid">
+            {GESTURES.map((g) => (
+              <li key={g.id} className="row" style={{ gap: 12 }}>
+                <span style={{ color: 'var(--violet)', display: 'inline-flex', width: 36, justifyContent: 'center' }}><GestureIcon id={g.id} size={30} /></span>
+                <div><b>“{g.phrase}”</b><div className="muted" style={{ fontSize: 13 }}>{g.label}</div></div>
+              </li>
+            ))}
+          </ul>
+        </section>
       </aside>
     </div>
+
+    <div className="lab-info">
+            <section className="card" aria-labelledby="sup-h">
+              <h2 id="sup-h" className="card-title">Supported</h2>
+              <ul className="plain-list">
+                <li>ASL fingerspelling A–Z (J and Z need a motion)</li>
+                <li>7 phrase gestures used in class (listed beside the alphabet)</li>
+                <li>Custom gestures a teacher records for the class</li>
+              </ul>
+            </section>
+            <section className="card" aria-labelledby="unsup-h">
+              <h2 id="unsup-h" className="card-title">Not supported</h2>
+              <ul className="plain-list">
+                <li>Full sign-language sentences or grammar</li>
+                <li>Other sign languages (BSL, ISL…) — letters are ASL</li>
+                <li>Two-handed signs and moving signs other than J and Z</li>
+              </ul>
+            </section>
+    </div>
+    </>
   );
 }
 
@@ -141,10 +144,10 @@ function TextToSign() {
   const [text, setText] = useState('hello');
   const words = text.toUpperCase().split(/\s+/).filter(Boolean).slice(0, 12);
   return (
-    <section className="card" aria-labelledby="t2s-h">
+    <section className="card t2s" aria-labelledby="t2s-h">
       <h2 id="t2s-h" className="card-title">Spell a word in sign</h2>
       <p className="muted" style={{ fontSize: 14, marginBottom: 12 }}>Type a word or name and see each letter’s hand shape in order, so you can sign it back.</p>
-      <div className="field" style={{ maxWidth: 480 }}>
+      <div className="field t2s-field">
         <label htmlFor="t2s">Text to spell</label>
         <input id="t2s" className="input" value={text} maxLength={60} onChange={(e) => setText(e.target.value)} placeholder="Type a word…" />
       </div>
@@ -154,7 +157,7 @@ function TextToSign() {
             <div className="field-label" style={{ marginBottom: 6 }}>{w}</div>
             <ol className="spell-steps" aria-label={`Letters of ${w}`}>
               {[...w].filter((ch) => LETTERS[ch]).map((ch, i) => (
-                <li key={i} className="spell-step"><HandDiagram letter={ch} size={84} /><span className="muted">{i + 1}</span></li>
+                <li key={i} className="spell-step"><HandDiagram letter={ch} size={96} /><span className="muted">{i + 1}</span></li>
               ))}
             </ol>
           </div>
@@ -205,19 +208,21 @@ function Practice() {
   };
 
   return (
-    <div className="grid grid-2" style={{ alignItems: 'start' }}>
-      <section className="card" aria-labelledby="prac-h">
+    <div className="lab-layout lab-practice">
+      <section className="card practice-main" aria-labelledby="prac-h">
         <h2 id="prac-h" className="sr-only">Practice target</h2>
-        <div className="pill-group" role="group" aria-label="What to practise" style={{ marginBottom: 12 }}>
-          <button className={`pill ${kind === 'letters' ? 'on' : ''}`} aria-pressed={kind === 'letters'} onClick={() => changeKind('letters')}>Letters</button>
-          <button className={`pill ${kind === 'phrases' ? 'on' : ''}`} aria-pressed={kind === 'phrases'} onClick={() => changeKind('phrases')}>Phrase gestures</button>
-        </div>
-        {kind === 'letters' && (
-          <div className="pill-group" role="group" aria-label="Which letters" style={{ marginBottom: 12 }}>
-            <button className={`pill ${pool === 'reliable' ? 'on' : ''}`} aria-pressed={pool === 'reliable'} onClick={() => { setPool('reliable'); setTarget(pickRandom(RELIABLE)); }}>Reliable letters</button>
-            <button className={`pill ${pool === 'all' ? 'on' : ''}`} aria-pressed={pool === 'all'} onClick={() => { setPool('all'); setTarget(pickRandom(ALL)); }}>All 26</button>
+        <div className="practice-filters">
+          <div className="pill-group" role="group" aria-label="What to practise">
+            <button className={`pill ${kind === 'letters' ? 'on' : ''}`} aria-pressed={kind === 'letters'} onClick={() => changeKind('letters')}>Letters</button>
+            <button className={`pill ${kind === 'phrases' ? 'on' : ''}`} aria-pressed={kind === 'phrases'} onClick={() => changeKind('phrases')}>Phrase gestures</button>
           </div>
-        )}
+          {kind === 'letters' && (
+            <div className="pill-group" role="group" aria-label="Which letters">
+              <button className={`pill ${pool === 'reliable' ? 'on' : ''}`} aria-pressed={pool === 'reliable'} onClick={() => { setPool('reliable'); setTarget(pickRandom(RELIABLE)); }}>Reliable letters</button>
+              <button className={`pill ${pool === 'all' ? 'on' : ''}`} aria-pressed={pool === 'all'} onClick={() => { setPool('all'); setTarget(pickRandom(ALL)); }}>All 26</button>
+            </div>
+          )}
+        </div>
 
         <div className="practice-target">
           <div className="muted" style={{ fontWeight: 800, fontSize: 12, letterSpacing: '0.08em' }}>SIGN THIS</div>
@@ -228,7 +233,7 @@ function Practice() {
               <p className="muted" style={{ fontSize: 14, maxWidth: 300, textAlign: 'center' }}>{LETTERS[target].hint}</p>
             </>
           ) : (
-            <><div style={{ fontSize: 64 }} aria-hidden="true">{phrase.emoji}</div><div className="practice-phrase">“{phrase.phrase}”</div><p className="muted">{phrase.label}</p></>
+            <><div style={{ color: 'var(--violet)', display: 'flex', justifyContent: 'center' }}><GestureIcon id={phrase.id} size={64} /></div><div className="practice-phrase">“{phrase.phrase}”</div><p className="muted">{phrase.label}</p></>
           )}
           <div role="status" aria-live="polite" style={{ minHeight: 28 }}>
             {feedback && <StatusBadge status={feedback.ok ? 'ok' : 'warn'}>{feedback.text}</StatusBadge>}
@@ -241,13 +246,13 @@ function Practice() {
         </div>
       </section>
 
-      <div className="stack">
+      <div className="stack lab-side">
         <section className="card" aria-labelledby="cam-h">
           <h2 id="cam-h" className="card-title">Your camera</h2>
           <p className="muted" style={{ fontSize: 14, marginBottom: 12 }}>Hold the shape for a moment until the bar fills.</p>
           <SignView sign={sign} />
         </section>
-        <div className="grid grid-3">
+        <div className="grid grid-3 practice-stats">
           {[['Correct', score.correct], ['Streak', score.streak], ['Best streak', score.best]].map(([l, v]) => (
             <div key={l} className="card stat"><div className="num">{v}</div><div className="label">{l}</div></div>
           ))}

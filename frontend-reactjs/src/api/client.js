@@ -82,6 +82,13 @@ export const qs = (params = {}) => {
   return s ? `?${s}` : '';
 };
 
+// Send a file as the request body (chat attachments). The server reads the bytes and checks what they really are.
+export const upload = async (path, body, headers = {}, retried = false) => {
+  const res = await fetch(`${API_URL}${path}`, { method: 'POST', credentials: 'include', headers: { ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...headers }, body });
+  if (res.status === 401 && !retried && (await refreshAccessToken())) return upload(path, body, headers, true);
+  return parse(res);
+};
+
 // Download a file the API protects with the access token (exports). Returns { blob, filename, type }.
 export const download = async (path, retried = false) => {
   const res = await fetch(`${API_URL}${path}`, { credentials: 'include', headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });

@@ -10,7 +10,10 @@ const mongoose = require('mongoose');
 
 const stamp = Date.now();
 const mk = async (name, role) => {
-  const user = await prisma.user.create({ data: { email: `${name}-${stamp}@demo.test`, username: name, passwordHash: 'x', role, emailVerified: true, profile: { create: {} } } });
+  const email = `${name}-${stamp}@demo.test`;
+  // A create that "failed" on a dropped connection may already have been saved; when the retry finds it, use it.
+  const user = await prisma.user.create({ data: { email, username: name, passwordHash: 'x', role, emailVerified: true, profile: { create: {} } } })
+    .catch(async (err) => { const found = err.code === 'P2002' ? await prisma.user.findUnique({ where: { email } }) : null; if (found) return found; throw err; });
   const { refreshToken } = await jwtHelper.generateTokenPair(user, {});
   return { ...user, refreshToken };
 };

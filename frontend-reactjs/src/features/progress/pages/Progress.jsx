@@ -1,6 +1,7 @@
 // Progress - skill bars and performance charts
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { groupBy, sum } from '../../../lib/jsUtils';
 import { Bar, Line } from 'react-chartjs-2';
 import {
@@ -25,7 +26,7 @@ const baseOptions = (xTitle, yTitle) => ({
   plugins: { legend: { display: false }, tooltip: { padding: 10 } },
   scales: {
     y: { beginAtZero: true, max: 100, grid: { color: GRID }, ticks: { color: INK }, title: axisTitle(yTitle) },
-    x: { grid: { display: false }, ticks: { color: INK }, title: axisTitle(xTitle) },
+    x: { grid: { display: false }, ticks: { color: INK, maxTicksLimit: 8, maxRotation: 0 }, title: axisTitle(xTitle) },
   },
 });
 
@@ -33,8 +34,13 @@ const baseOptions = (xTitle, yTitle) => ({
 const weekStart = (d) => {
   const x = new Date(d); const day = (x.getDay() + 6) % 7;
   x.setDate(x.getDate() - day); x.setHours(0, 0, 0, 0);
-  return x.toISOString().slice(0, 10);
+  // the local date (toISOString would give the day before in time zones ahead of UTC)
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
 };
+
+// 2026-11-09 -> "Nov 9" for chart labels (the data tables keep the full date)
+const shortDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric' });
 
 function ChartCard({ title, subtitle, summary, table, children, wide }) {
   return (
@@ -79,10 +85,10 @@ export default function Progress() {
 
   const profile = user?.profile;
   const stats = [
-    { icon: Mic, label: 'Sessions', value: profile?.totalSessions ?? 0, bg: 'var(--violet-light)', color: 'var(--violet-dark)' },
-    { icon: Target, label: 'Average accuracy', value: `${Math.round(profile?.avgAccuracy ?? 0)}%`, bg: 'var(--mint)', color: 'var(--go)' },
-    { icon: Timer, label: 'Practice time', value: `${profile?.totalMinutes ?? 0} min`, bg: 'var(--peach)', color: '#9a3412' },
-    { icon: Flame, label: 'Current streak', value: `${activity?.streak?.current ?? profile?.streak ?? 0} days`, bg: '#fef3c7', color: '#8a4a05' },
+    { icon: Mic, label: 'Sessions', hint: 'practice sessions saved', value: profile?.totalSessions ?? 0, bg: 'var(--violet-light)', color: 'var(--violet-dark)' },
+    { icon: Target, label: 'Average accuracy', hint: 'across all sessions', value: `${Math.round(profile?.avgAccuracy ?? 0)}%`, bg: 'var(--mint)', color: 'var(--go)' },
+    { icon: Timer, label: 'Practice time', hint: 'time spent practising', value: `${profile?.totalMinutes ?? 0} min`, bg: 'var(--peach)', color: '#9a3412' },
+    { icon: Flame, label: 'Current streak', hint: 'days in a row', value: `${activity?.streak?.current ?? profile?.streak ?? 0} days`, bg: '#fef3c7', color: '#8a4a05' },
   ];
 
   const loading = trend === null || sessions === null;
@@ -100,10 +106,10 @@ export default function Progress() {
           </div>
         )} />
 
-      <div className="grid grid-4" style={{ marginBottom: 20 }}>
-        {stats.map(({ icon: Icon, label, value, bg, color }) => (
+      <div className="grid grid-4" style={{ marginBottom: 'var(--gap)' }}>
+        {stats.map(({ label, value, hint }) => (
           <div className="card stat" key={label}>
-            <div className="num">{value}</div><div className="label">{label}</div>
+            <div className="num">{value}</div><div className="label">{label}</div><div className="muted" style={{ fontSize: 12 }}>{hint}</div>
           </div>
         ))}
       </div>
@@ -112,9 +118,9 @@ export default function Progress() {
       {loading && (
         <div className="grid grid-2" aria-busy="true"><div className="card"><Skeleton height={20} width="40%" /><Skeleton height={240} style={{ marginTop: 16 }} /></div><div className="card"><Skeleton height={20} width="40%" /><Skeleton height={240} style={{ marginTop: 16 }} /></div></div>
       )}
-      {noData && !error && <div className="card"><EmptyState icon={BarChart3} title="No practice data yet">Complete a practice session and your charts will appear here.</EmptyState></div>}
+      {noData && !error && <div className="card"><EmptyState icon={BarChart3} title="No practice data yet" action={<Link to="/dashboard" className="btn btn-primary btn-sm" style={{ marginTop: 14 }}>Start practising</Link>}>Complete a practice session and your charts will appear here.</EmptyState></div>}
 
-      {!loading && skills && (
+      {!loading && !noData && skills && (
         <section className="card" aria-labelledby="skills-h" style={{ marginBottom: 'var(--gap)' }}>
           <h2 id="skills-h" className="card-title" style={{ marginBottom: 2 }}>Skill breakdown</h2>
           <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>Average scores from pronunciation practice, last {days} days{skills.attempts ? ` · ${skills.attempts} attempts` : ''}</p>
@@ -133,13 +139,13 @@ export default function Progress() {
       )}
 
       {!loading && !noData && (
-        <div className="grid grid-2">
+        <div className="grid grid-2" style={{ alignItems: 'start' }}>
           <ChartCard title="Accuracy over time" subtitle={`Daily average accuracy, last ${days} days`}
             summary={trend.length ? `Line chart of daily average accuracy over the last ${days} days, from ${Math.round(trend[0].avgAccuracy)} to ${Math.round(trend[trend.length - 1].avgAccuracy)} percent.` : 'No accuracy data in this period.'}
             table={<table className="table"><thead><tr><th scope="col">Date</th><th scope="col">Average accuracy</th><th scope="col">Attempts</th></tr></thead><tbody>{trend.map((t) => <tr key={t._id}><td>{t._id}</td><td>{Math.round(t.avgAccuracy)}%</td><td>{t.count}</td></tr>)}</tbody></table>}>
             {trend.length ? (
               <Line options={baseOptions('Date', 'Accuracy (%)')}
-                data={{ labels: trend.map((t) => t._id), datasets: [{ label: 'Average accuracy (%)', data: trend.map((t) => Math.round(t.avgAccuracy)), borderColor: '#5b3df5', backgroundColor: 'rgba(91,61,245,0.12)', fill: true, tension: 0.35, pointRadius: 4, pointBackgroundColor: '#5b3df5' }] }} />
+                data={{ labels: trend.map((t) => shortDate(t._id)), datasets: [{ label: 'Average accuracy (%)', data: trend.map((t) => Math.round(t.avgAccuracy)), borderColor: '#5b3df5', backgroundColor: 'rgba(91,61,245,0.12)', fill: true, tension: 0.35, pointRadius: 4, pointBackgroundColor: '#5b3df5' }] }} />
             ) : <EmptyState icon={BarChart3} title="No data for this period">Try a longer time range.</EmptyState>}
           </ChartCard>
 
@@ -148,7 +154,7 @@ export default function Progress() {
             table={<table className="table"><thead><tr><th scope="col">Language</th><th scope="col">Average accuracy</th><th scope="col">Sessions</th></tr></thead><tbody>{perLanguage.map((l) => <tr key={l.code}><td>{langName(l.code)}</td><td>{l.avg}%</td><td>{l.n}</td></tr>)}</tbody></table>}>
             {perLanguage.length ? (
               <Bar options={baseOptions('Language', 'Accuracy (%)')}
-                data={{ labels: perLanguage.map((l) => langName(l.code)), datasets: [{ label: 'Average accuracy (%)', data: perLanguage.map((l) => l.avg), backgroundColor: '#7c5cff', borderRadius: 8 }] }} />
+                data={{ labels: perLanguage.map((l) => langName(l.code)), datasets: [{ label: 'Average accuracy (%)', data: perLanguage.map((l) => l.avg), backgroundColor: '#7c5cff', borderRadius: 8, maxBarThickness: 72 }] }} />
             ) : <EmptyState icon={BarChart3} title="No sessions yet" />}
           </ChartCard>
 
@@ -157,7 +163,7 @@ export default function Progress() {
             table={<table className="table"><thead><tr><th scope="col">Week starting</th><th scope="col">Sessions</th></tr></thead><tbody>{perWeek.map((w) => <tr key={w.week}><td>{w.week}</td><td>{w.count}</td></tr>)}</tbody></table>}>
             {perWeek.length ? (
               <Bar options={{ ...baseOptions('Week starting', 'Sessions'), scales: { ...baseOptions().scales, y: { beginAtZero: true, grid: { color: GRID }, ticks: { color: INK, precision: 0 }, title: axisTitle('Sessions') }, x: { grid: { display: false }, ticks: { color: INK }, title: axisTitle('Week starting') } } }}
-                data={{ labels: perWeek.map((w) => w.week.slice(5)), datasets: [{ label: 'Sessions', data: perWeek.map((w) => w.count), backgroundColor: '#5b3df5', borderRadius: 8 }] }} />
+                data={{ labels: perWeek.map((w) => shortDate(w.week)), datasets: [{ label: 'Sessions', data: perWeek.map((w) => w.count), backgroundColor: '#5b3df5', borderRadius: 8, maxBarThickness: 72 }] }} />
             ) : <EmptyState icon={BarChart3} title="No sessions yet" />}
           </ChartCard>
         </div>
